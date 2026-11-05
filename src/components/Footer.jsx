@@ -1,5 +1,16 @@
-const Footer = () => {
-  return <footer className="bg-gray-200 p-4 text-center">Footer</footer>
-}
+import React from 'react';
 
-export default Footer
+const Footer = () => {
+  const currentYear = new Date().getFullYear();
+
+  return (
+    <footer className="app-footer">
+      <div>
+        © {currentYear} <b>BillBook</b>. All rights reserved. Powered by Vision Technolabs.
+      </div>
+      
+    </footer>
+  );
+};
+
+export default Footer;
