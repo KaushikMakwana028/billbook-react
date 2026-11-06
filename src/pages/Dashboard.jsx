@@ -116,7 +116,65 @@ const Dashboard = () => {
   const chartLabels = chart.labels || [];
   const chartSales = chart.sales_values || [];
   const chartProfit = chart.profit_values || [];
-  const maxChartVal = Math.max(...chartSales, ...chartProfit, 100);
+
+  // Group by month if chartView === 'months'
+  const displayChartData = React.useMemo(() => {
+    if (!chartLabels || chartLabels.length === 0) {
+      return { labels: [], sales: [], profit: [] };
+    }
+
+    if (chartView === 'months') {
+      const monthMap = {};
+      chartLabels.forEach((lbl, i) => {
+        const parts = lbl.trim().split(' ');
+        const monthKey = parts.length > 1 ? parts[1] : lbl;
+        if (!monthMap[monthKey]) {
+          monthMap[monthKey] = { sales: 0, profit: 0 };
+        }
+        monthMap[monthKey].sales += Number(chartSales[i]) || 0;
+        monthMap[monthKey].profit += Number(chartProfit[i]) || 0;
+      });
+
+      const mLabels = Object.keys(monthMap);
+      return {
+        labels: mLabels,
+        sales: mLabels.map((m) => monthMap[m].sales),
+        profit: mLabels.map((m) => monthMap[m].profit),
+      };
+    }
+
+    return {
+      labels: chartLabels,
+      sales: chartSales.map((v) => Number(v) || 0),
+      profit: chartProfit.map((v) => Number(v) || 0),
+    };
+  }, [chartLabels, chartSales, chartProfit, chartView]);
+
+  // Clean, rounded ceiling with ~18% headroom so tallest bar never breaches the top gridline
+  const maxChartVal = React.useMemo(() => {
+    const raw = Math.max(...displayChartData.sales, ...displayChartData.profit, 100);
+    if (!raw || raw <= 0) return 1000;
+    const target = raw * 1.18;
+    const mag = Math.pow(10, Math.floor(Math.log10(target)));
+    const norm = target / mag;
+    let nice = 10;
+    if (norm <= 1.25) nice = 1.25;
+    else if (norm <= 1.5) nice = 1.5;
+    else if (norm <= 2) nice = 2;
+    else if (norm <= 2.5) nice = 2.5;
+    else if (norm <= 4) nice = 4;
+    else if (norm <= 5) nice = 5;
+    else if (norm <= 7.5) nice = 7.5;
+    return Math.round(nice * mag);
+  }, [displayChartData]);
+
+  const totalSalesView = React.useMemo(() => {
+    return displayChartData.sales.reduce((acc, v) => acc + v, 0) || Number(chart.total_sales) || 0;
+  }, [displayChartData, chart.total_sales]);
+
+  const totalProfitView = React.useMemo(() => {
+    return displayChartData.profit.reduce((acc, v) => acc + v, 0) || Number(chart.total_profit) || 0;
+  }, [displayChartData, chart.total_profit]);
 
   const todayDateStr = new Intl.DateTimeFormat('en-IN', {
     weekday: 'long',
@@ -128,7 +186,7 @@ const Dashboard = () => {
   return (
     <div className="space-y-4">
       {/* ── Welcome Greeting & Filter Bar ── */}
-      <div className="hello">
+      <div className="hello flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
           <div className="text-xs text-[var(--mut)] flex items-center gap-1.5 mb-1 font-medium">
             <i className="bi bi-sun text-amber-500"></i>
@@ -142,44 +200,44 @@ const Dashboard = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Filter segment */}
-          <div className="seg">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+          {/* Filter segment with mobile horizontal scroll */}
+          <div className="seg mobile-scroll text-xs w-full sm:w-auto flex justify-between sm:justify-start">
             <button
-              className={filter === 'day' ? 'on' : ''}
+              className={filter === 'day' ? 'on flex-1 sm:flex-initial' : 'flex-1 sm:flex-initial'}
               onClick={() => handleFilterPreset('day')}
             >
               Today
             </button>
             <button
-              className={filter === 'week' ? 'on' : ''}
+              className={filter === 'week' ? 'on flex-1 sm:flex-initial' : 'flex-1 sm:flex-initial'}
               onClick={() => handleFilterPreset('week')}
             >
               This Week
             </button>
             <button
-              className={filter === 'month' ? 'on' : ''}
+              className={filter === 'month' ? 'on flex-1 sm:flex-initial' : 'flex-1 sm:flex-initial'}
               onClick={() => handleFilterPreset('month')}
             >
               This Month
             </button>
             <button
-              className={filter === 'year' ? 'on' : ''}
+              className={filter === 'year' ? 'on flex-1 sm:flex-initial' : 'flex-1 sm:flex-initial'}
               onClick={() => handleFilterPreset('year')}
             >
               This Year
             </button>
             <button
-              className={filter === 'custom' || showCustomDate ? 'on' : ''}
+              className={filter === 'custom' || showCustomDate ? 'on flex-1 sm:flex-initial' : 'flex-1 sm:flex-initial'}
               onClick={() => setShowCustomDate(!showCustomDate)}
               title="Filter by custom date range"
             >
               <i className="bi bi-calendar-range me-1"></i>
-              <span>Custom Date</span>
+              <span>Custom</span>
             </button>
           </div>
 
-          <Link to="/sales" className="btn-b text-xs font-semibold !h-9 px-3.5">
+          <Link to="/sales" className="btn-b text-xs font-semibold !h-9 px-3.5 flex items-center justify-center gap-1.5 shrink-0">
             <i className="bi bi-plus-lg"></i>
             <span>Create Sale</span>
           </Link>
@@ -190,53 +248,55 @@ const Dashboard = () => {
       {(showCustomDate || filter === 'custom') && (
         <form
           onSubmit={handleApplyCustomRange}
-          className="card2 !p-3 flex flex-wrap items-center justify-between gap-3 animate-in fade-in duration-150 border border-[var(--blue)]/30"
+          className="card2 !p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-150 border border-[var(--blue)]/30"
         >
           <div className="flex items-center gap-2 text-xs font-semibold text-[var(--ink)]">
-            <div className="w-7 h-7 rounded-lg bg-[var(--blue)]/10 text-[var(--blue)] flex items-center justify-center">
+            <div className="w-7 h-7 rounded-lg bg-[var(--blue)]/10 text-[var(--blue)] flex items-center justify-center shrink-0">
               <i className="bi bi-calendar3"></i>
             </div>
-            <span>Filter Dashboard by Custom Date Range:</span>
+            <span>Filter by Custom Date Range:</span>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-[var(--mut)] font-medium">From:</span>
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1">
+              <span className="text-[11px] text-[var(--mut)] font-medium">From:</span>
               <input
                 type="date"
-                className="auth-input !h-8 !w-auto text-xs py-1 px-2.5 cursor-pointer"
+                className="auth-input !h-9 text-xs py-1 px-2.5 cursor-pointer w-full sm:w-auto"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
               />
             </div>
 
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-[var(--mut)] font-medium">To:</span>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1">
+              <span className="text-[11px] text-[var(--mut)] font-medium">To:</span>
               <input
                 type="date"
-                className="auth-input !h-8 !w-auto text-xs py-1 px-2.5 cursor-pointer"
+                className="auth-input !h-9 text-xs py-1 px-2.5 cursor-pointer w-full sm:w-auto"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
               />
             </div>
 
-            <button
-              type="submit"
-              className="btn-b text-xs font-semibold !h-8 px-3.5"
-            >
-              <i className="bi bi-funnel"></i>
-              <span>Apply Filter</span>
-            </button>
+            <div className="col-span-2 sm:col-span-1 flex items-center gap-2 mt-1 sm:mt-0">
+              <button
+                type="submit"
+                className="btn-b text-xs font-semibold !h-9 px-3.5 flex-1 sm:flex-none justify-center"
+              >
+                <i className="bi bi-funnel"></i>
+                <span>Apply</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={handleResetDateFilter}
-              className="chip text-xs !h-8 px-2.5 hover:bg-[var(--soft)]"
-              title="Reset to default filter"
-            >
-              <i className="bi bi-arrow-counterclockwise me-1"></i>
-              <span>Reset</span>
-            </button>
+              <button
+                type="button"
+                onClick={handleResetDateFilter}
+                className="chip text-xs !h-9 px-3 hover:bg-[var(--soft)] flex-1 sm:flex-none justify-center"
+                title="Reset to default filter"
+              >
+                <i className="bi bi-arrow-counterclockwise"></i>
+                <span>Reset</span>
+              </button>
+            </div>
           </div>
         </form>
       )}
@@ -350,11 +410,11 @@ const Dashboard = () => {
           ) : (
             <div className="card2 flex flex-col justify-between">
               <div>
-                <div className="h !mb-2">
+                <div className="h !mb-2 flex-wrap gap-2">
                   <div>
                     <b>Sales & Profit Trend</b>
                     <small>
-                      Total Sales: {fmtCurrency(chart.total_sales)} • Total Profit: {fmtCurrency(chart.total_profit)}
+                      Total Sales: {fmtCurrency(totalSalesView)} • Total Profit: {fmtCurrency(totalProfitView)}
                     </small>
                   </div>
                   <div className="flex items-center gap-3">
@@ -372,18 +432,20 @@ const Dashboard = () => {
                         Months
                       </button>
                     </div>
-                    <div className="dl hidden sm:flex">
-                      <span>
-                        <i style={{ background: 'var(--blue)' }}></i> Sales
+                    <div className="flex items-center gap-3 text-xs font-medium">
+                      <span className="flex items-center gap-1.5 text-[var(--ink)]">
+                        <span className="w-2.5 h-2.5 rounded-sm bg-[var(--blue)] inline-block"></span>
+                        <span>Sales</span>
                       </span>
-                      <span>
-                        <i style={{ background: 'var(--green)' }}></i> Profit
+                      <span className="flex items-center gap-1.5 text-[var(--ink)]">
+                        <span className="w-2.5 h-2.5 rounded-sm bg-[var(--green)] inline-block"></span>
+                        <span>Profit</span>
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Bar Plot (Compact, tight height) */}
+                {/* Bar Plot */}
                 <div className="plot">
                   {/* Horizontal guide lines */}
                   <div className="plot-grid" style={{ bottom: '0%' }}>
@@ -396,32 +458,48 @@ const Dashboard = () => {
                     <span>Rs. {Math.round(maxChartVal).toLocaleString('en-IN')}</span>
                   </div>
 
-                  {/* Bars */}
+                  {/* Grouped Side-by-Side Bars */}
                   <div className="bars">
-                    {chartLabels.length > 0 ? (
-                      chartLabels.map((lbl, idx) => {
-                        const sVal = chartSales[idx] || 0;
-                        const pVal = chartProfit[idx] || 0;
-                        const sHeight = Math.min(100, Math.max(6, (sVal / maxChartVal) * 100));
-                        const pHeight = Math.min(100, Math.max(3, (pVal / maxChartVal) * 100));
+                    {displayChartData.labels.length > 0 ? (
+                      displayChartData.labels.map((lbl, idx) => {
+                        const sVal = displayChartData.sales[idx] || 0;
+                        const pVal = displayChartData.profit[idx] || 0;
+                        const sHeight = Math.min(100, Math.max(sVal > 0 ? 3 : 0, (sVal / maxChartVal) * 100));
+                        const pHeight = Math.min(100, Math.max(pVal > 0 ? 3 : 0, (pVal / maxChartVal) * 100));
 
                         return (
                           <div key={idx} className="cl">
-                            <span className="tip">
-                              Sales: {fmtCurrency(sVal)}
-                              <br />
-                              Profit: {fmtCurrency(pVal)}
-                            </span>
-                            <div
-                              className="s"
-                              style={{ height: `${sHeight}%` }}
-                              title={`Sales: ${fmtCurrency(sVal)}`}
-                            ></div>
-                            <div
-                              className="b"
-                              style={{ height: `${pHeight}%`, marginTop: '2px' }}
-                              title={`Profit: ${fmtCurrency(pVal)}`}
-                            ></div>
+                            <div className="tip">
+                              <div className="font-semibold text-white mb-1 pb-1 border-b border-slate-700/60">
+                                {lbl}
+                              </div>
+                              <div className="flex items-center justify-between gap-4 text-[11px] text-slate-300">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                                  <span>Sales:</span>
+                                </span>
+                                <b className="text-blue-400 font-semibold">{fmtCurrency(sVal)}</b>
+                              </div>
+                              <div className="flex items-center justify-between gap-4 text-[11px] mt-0.5 text-slate-300">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                                  <span>Profit:</span>
+                                </span>
+                                <b className="text-emerald-400 font-semibold">{fmtCurrency(pVal)}</b>
+                              </div>
+                            </div>
+                            <div className="bar-group">
+                              <div
+                                className="bar-s"
+                                style={{ height: `${sHeight}%` }}
+                                title={`Sales: ${fmtCurrency(sVal)}`}
+                              ></div>
+                              <div
+                                className="bar-p"
+                                style={{ height: `${pHeight}%` }}
+                                title={`Profit: ${fmtCurrency(pVal)}`}
+                              ></div>
+                            </div>
                             <em>{lbl}</em>
                           </div>
                         );
@@ -450,7 +528,7 @@ const Dashboard = () => {
           ) : (
             <div className="card2 flex flex-col justify-between">
               <div>
-                <div className="h !mb-2">
+                <div className="h !mb-2 flex-wrap gap-2">
                   <div>
                     <b>Recent Invoices</b>
                     <small>Latest 5 store transactions</small>

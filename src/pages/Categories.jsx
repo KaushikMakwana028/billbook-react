@@ -1,13 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import categoryService from '../services/categoryService';
+import Pagination from '../components/Pagination';
 import toast from 'react-hot-toast';
 
 const Categories = () => {
+  const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'active', 'inactive'
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRows, setTotalRows] = useState(0);
+  const [serverProductsCount, setServerProductsCount] = useState(0);
+  const limit = 9;
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -21,13 +30,30 @@ const Categories = () => {
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Load categories from API
-  const fetchCategories = async () => {
+  // Load categories from API (supports pagination)
+  const fetchCategories = async (page = 1) => {
     setLoading(true);
     try {
-      const res = await categoryService.getCategories();
-      if (res.status && Array.isArray(res.data)) {
-        setCategories(res.data);
+      const res = await categoryService.getCategories({
+        page,
+        limit,
+        search: search.trim(),
+      });
+      if (res.status && res.data) {
+        if (res.data.categories) {
+          setCategories(res.data.categories || []);
+          setTotalRows(res.data.total_rows || 0);
+          setTotalPages(res.data.total_pages || 1);
+          setCurrentPage(res.data.current_page || 1);
+          if (res.data.total_products_count !== undefined) {
+            setServerProductsCount(res.data.total_products_count);
+          }
+        } else if (Array.isArray(res.data)) {
+          setCategories(res.data);
+          setTotalRows(res.data.length);
+          setTotalPages(Math.ceil(res.data.length / limit) || 1);
+          setCurrentPage(page);
+        }
       } else {
         toast.error(res.message || 'Failed to load categories.');
       }
@@ -39,19 +65,21 @@ const Categories = () => {
   };
 
   useEffect(() => {
-    fetchCategories();
-  }, []);
+    const timer = setTimeout(() => {
+      fetchCategories(1);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [search]);
 
-  // Filter categories by search and status
-  const filteredCategories = categories.filter((cat) => {
-    const matchesSearch = cat.name.toLowerCase().includes(search.toLowerCase().trim());
+  // Filter categories by status if needed
+  const displayCategories = categories.filter((cat) => {
     const isActive = cat.isActive == 1 || cat.isActive === '1' || cat.status === 'active';
-    if (statusFilter === 'active') return matchesSearch && isActive;
-    if (statusFilter === 'inactive') return matchesSearch && !isActive;
-    return matchesSearch;
+    if (statusFilter === 'active') return isActive;
+    if (statusFilter === 'inactive') return !isActive;
+    return true;
   });
 
-  const totalProductsCount = categories.reduce(
+  const totalProductsCount = serverProductsCount || categories.reduce(
     (acc, c) => acc + (parseInt(c.productCount, 10) || 0),
     0
   );
@@ -93,7 +121,7 @@ const Categories = () => {
         if (res.status) {
           toast.success(res.message || 'Category added successfully!');
           setModalOpen(false);
-          fetchCategories();
+          fetchCategories(1);
         } else {
           toast.error(res.message || 'Could not add category.');
         }
@@ -106,7 +134,7 @@ const Categories = () => {
         if (res.status) {
           toast.success(res.message || 'Category updated successfully!');
           setModalOpen(false);
-          fetchCategories();
+          fetchCategories(currentPage);
         } else {
           toast.error(res.message || 'Could not update category.');
         }
@@ -127,7 +155,7 @@ const Categories = () => {
       if (res.status) {
         toast.success(res.message || 'Category deleted successfully!');
         setDeleteId(null);
-        fetchCategories();
+        fetchCategories(currentPage);
       } else {
         toast.error(res.message || 'Failed to delete category.');
       }
@@ -167,7 +195,7 @@ const Categories = () => {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <div className="chip hidden sm:inline-flex text-xs">
+          <div className="chip !hidden sm:!inline-flex text-xs">
             <i className="bi bi-folder2-open text-[var(--blue)]"></i>
             <span><b>{categories.length}</b> Categories</span>
             <span className="mx-1 opacity-40">•</span>
@@ -187,7 +215,7 @@ const Categories = () => {
       {/* ── Search & Filter Controls ── */}
       <div className="card2 !p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
         {/* Search Input Box (No Overlap) */}
-        <div className="search-input-wrap sm:w-80">
+        <div className="search-input-wrap w-full sm:w-80">
           <i className="bi bi-search"></i>
           <input
             type="text"
@@ -208,22 +236,22 @@ const Categories = () => {
         </div>
 
         {/* Status filter segments */}
-        <div className="flex items-center gap-2 justify-between sm:justify-end">
-          <div className="seg text-xs flex-1 sm:flex-none justify-center">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="seg mobile-scroll text-xs flex-1 sm:flex-none justify-around sm:justify-start">
             <button
-              className={statusFilter === 'all' ? 'on' : ''}
+              className={statusFilter === 'all' ? 'on flex-1 sm:flex-initial' : 'flex-1 sm:flex-initial'}
               onClick={() => setStatusFilter('all')}
             >
               All ({categories.length})
             </button>
             <button
-              className={statusFilter === 'active' ? 'on' : ''}
+              className={statusFilter === 'active' ? 'on flex-1 sm:flex-initial' : 'flex-1 sm:flex-initial'}
               onClick={() => setStatusFilter('active')}
             >
               Active
             </button>
             <button
-              className={statusFilter === 'inactive' ? 'on' : ''}
+              className={statusFilter === 'inactive' ? 'on flex-1 sm:flex-initial' : 'flex-1 sm:flex-initial'}
               onClick={() => setStatusFilter('inactive')}
             >
               Inactive
@@ -231,8 +259,8 @@ const Categories = () => {
           </div>
 
           <button
-            onClick={fetchCategories}
-            className="chip !h-[38px] !px-2.5 text-xs shrink-0"
+            onClick={() => fetchCategories(1)}
+            className="chip !h-[38px] !px-3 text-xs shrink-0"
             title="Refresh categories"
           >
             <i className="bi bi-arrow-clockwise"></i>
@@ -255,74 +283,92 @@ const Categories = () => {
             </div>
           ))}
         </div>
-      ) : filteredCategories.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
-          {filteredCategories.map((cat, idx) => {
-            const theme = getCategoryTheme(idx);
-            const isActive = cat.isActive == 1 || cat.isActive === '1' || cat.status === 'active';
-            const count = parseInt(cat.productCount, 10) || 0;
+      ) : displayCategories.length > 0 ? (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+            {displayCategories.map((cat, idx) => {
+              const theme = getCategoryTheme(idx);
+              const isActive = cat.isActive == 1 || cat.isActive === '1' || cat.status === 'active';
+              const count = parseInt(cat.productCount, 10) || 0;
 
-            return (
-              <div
-                key={cat.id}
-                className="card2 !p-4 flex flex-col justify-between hover:border-[var(--blue)] transition-all group"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-lg ${theme.bg} shrink-0`}>
-                        <i className={`bi ${theme.icon}`}></i>
+              return (
+                <div
+                  key={cat.id}
+                  onClick={() => navigate(`/products?category=${cat.id}`)}
+                  className="card2 !p-4 flex flex-col justify-between hover:border-[var(--blue)] hover:shadow-md transition-all group cursor-pointer"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-lg ${theme.bg} shrink-0`}>
+                          <i className={`bi ${theme.icon}`}></i>
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="font-semibold text-sm text-[var(--ink)] truncate group-hover:text-[var(--blue)] transition-colors" title={cat.name}>
+                            {cat.name}
+                          </h3>
+                          <span className="text-[11px] text-[var(--mut)] block">
+                            {cat.created_on ? cat.created_on.split(' ')[0] : 'Category'}
+                          </span>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <h3 className="font-semibold text-sm text-[var(--ink)] truncate" title={cat.name}>
-                          {cat.name}
-                        </h3>
-                        <span className="text-[11px] text-[var(--mut)] block">
-                          ID: #{cat.id} • {cat.created_on ? cat.created_on.split(' ')[0] : 'Active'}
-                        </span>
-                      </div>
+
+                      {/* Status Pill */}
+                      <span className={`pill shrink-0 ${isActive ? '' : '!bg-gray-100 !text-gray-500 dark:!bg-gray-800'}`}>
+                        {isActive ? 'Active' : 'Inactive'}
+                      </span>
                     </div>
+                  </div>
 
-                    {/* Status Pill */}
-                    <span className={`pill shrink-0 ${isActive ? '' : '!bg-gray-100 !text-gray-500 dark:!bg-gray-800'}`}>
-                      {isActive ? 'Active' : 'Inactive'}
+                  {/* Bottom Row: Product count & Actions */}
+                  <div className="mt-4 pt-3 border-t border-[var(--line)] flex items-center justify-between">
+                    <span
+                      className="inline-flex items-center gap-1.5 text-xs text-[var(--mut)] group-hover:text-[var(--blue)] transition-colors font-medium"
+                      title="View products in this category"
+                    >
+                      <i className="bi bi-box-seam"></i>
+                      <span><b>{count}</b> {count === 1 ? 'Product' : 'Products'}</span>
+                      <i className="bi bi-arrow-right text-[10px]"></i>
                     </span>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEdit(cat);
+                        }}
+                        className="w-7 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-[var(--card)] hover:text-[var(--blue)] text-[var(--mut)] flex items-center justify-center transition-colors text-xs"
+                        title="Edit Category"
+                      >
+                        <i className="bi bi-pencil"></i>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteId(cat.id);
+                        }}
+                        className="w-7 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-500 text-[var(--mut)] flex items-center justify-center transition-colors text-xs"
+                        title="Delete Category"
+                      >
+                        <i className="bi bi-trash"></i>
+                      </button>
+                    </div>
                   </div>
                 </div>
+              );
+            })}
+          </div>
 
-                {/* Bottom Row: Product count & Actions */}
-                <div className="mt-4 pt-3 border-t border-[var(--line)] flex items-center justify-between">
-                  <Link
-                    to={`/products?category=${cat.id}`}
-                    className="inline-flex items-center gap-1.5 text-xs text-[var(--mut)] hover:text-[var(--blue)] transition-colors font-medium"
-                    title="View products in this category"
-                  >
-                    <i className="bi bi-box-seam"></i>
-                    <span><b>{count}</b> {count === 1 ? 'Product' : 'Products'}</span>
-                    <i className="bi bi-arrow-right text-[10px]"></i>
-                  </Link>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => handleOpenEdit(cat)}
-                      className="w-7 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-[var(--card)] hover:text-[var(--blue)] text-[var(--mut)] flex items-center justify-center transition-colors text-xs"
-                      title="Edit Category"
-                    >
-                      <i className="bi bi-pencil"></i>
-                    </button>
-                    <button
-                      onClick={() => setDeleteId(cat.id)}
-                      className="w-7 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-500 text-[var(--mut)] flex items-center justify-center transition-colors text-xs"
-                      title="Delete Category"
-                    >
-                      <i className="bi bi-trash"></i>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+          {/* Pagination Controls */}
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalRows={totalRows}
+            limit={limit}
+            onPageChange={(p) => fetchCategories(p)}
+            itemName="categories"
+          />
+        </>
       ) : (
         /* Empty State */
         <div className="card2 !p-12 text-center">

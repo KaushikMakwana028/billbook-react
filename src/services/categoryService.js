@@ -1,9 +1,16 @@
 import axiosInstance from '../api/axiosInstance';
 
 export const categoryService = {
-  // Get all categories
-  getCategories: async () => {
-    const response = await axiosInstance.get('api/get-category-list');
+  // Get categories (supports optional pagination, search)
+  getCategories: async ({ page, limit = 8, search = '' } = {}) => {
+    const params = new URLSearchParams();
+    if (page !== undefined && page !== null) params.append('page', page);
+    if (limit) params.append('limit', limit);
+    if (search) params.append('search', search);
+
+    const query = params.toString();
+    const url = query ? `api/get-category-list?${query}` : 'api/get-category-list';
+    const response = await axiosInstance.get(url);
     return response.data;
   },
 

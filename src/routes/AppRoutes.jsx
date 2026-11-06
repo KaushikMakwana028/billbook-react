@@ -11,6 +11,10 @@ import Register from '../pages/Register';
 import Profile from '../pages/Profile';
 import Products from '../pages/Products';
 import Categories from '../pages/Categories';
+import Sales from '../pages/Sales';
+import Parties from '../pages/Parties';
+import InvoiceTemplates from '../pages/InvoiceTemplates';
+import WhatsAppConnect from '../pages/WhatsAppConnect';
 
 // Protected Route Guard
 const ProtectedRoute = ({ children }) => {
@@ -82,17 +86,13 @@ const AppRoutes = () => {
         }
       />
 
-      {/* Placeholders for subsequent steps */}
+      {/* Sales & Orders */}
       <Route
         path="/sales"
         element={
           <ProtectedRoute>
             <MainLayout>
-              <div className="card2 p-8 text-center">
-                <i className="bi bi-receipt text-4xl text-[var(--blue)] block mb-2"></i>
-                <h3 className="text-lg font-bold">Sales & Invoicing Module</h3>
-                <p className="text-xs text-[var(--mut)] mt-1">Ready for step 2 integration.</p>
-              </div>
+              <Sales />
             </MainLayout>
           </ProtectedRoute>
         }
@@ -117,30 +117,45 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
+      {/* Customers & Parties */}
       <Route
         path="/parties"
         element={
           <ProtectedRoute>
             <MainLayout>
-              <div className="card2 p-8 text-center">
-                <i className="bi bi-people text-4xl text-[var(--blue)] block mb-2"></i>
-                <h3 className="text-lg font-bold">Customers & Parties Module</h3>
-                <p className="text-xs text-[var(--mut)] mt-1">Ready for step 2 integration.</p>
-              </div>
+              <Parties />
             </MainLayout>
           </ProtectedRoute>
         }
       />
+      {/* Invoice Templates & Branding */}
       <Route
         path="/invoice-templates"
         element={
           <ProtectedRoute>
             <MainLayout>
-              <div className="card2 p-8 text-center">
-                <i className="bi bi-palette text-4xl text-rose-500 block mb-2"></i>
-                <h3 className="text-lg font-bold">Invoice Templates Module</h3>
-                <p className="text-xs text-[var(--mut)] mt-1">Ready for step 2 integration.</p>
-              </div>
+              <InvoiceTemplates />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+      {/* WhatsApp Connect */}
+      <Route
+        path="/whatsapp"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <WhatsAppConnect />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/whatsapp-connect"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <WhatsAppConnect />
             </MainLayout>
           </ProtectedRoute>
         }

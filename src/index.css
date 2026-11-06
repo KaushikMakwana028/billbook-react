@@ -1,3 +1,7 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "Urbanist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));

@@ -50,12 +50,24 @@ const Sidebar = ({ isOpen, onClose }) => {
             <small>{user?.business_name || user?.shop_name || 'Smart Billing'}</small>
           </div>
           <button
-            className="sq"
+            className="sq text-[#94a3b8] hover:text-white transition-colors"
             onClick={onClose}
-            aria-label="Toggle Navigation Sidebar"
+            aria-label="Sidebar Navigation Toggle"
+            title="Toggle Navigation"
           >
-            <i className="bi bi-layout-sidebar hidden lg:inline-block"></i>
-            <i className="bi bi-x-lg lg:hidden"></i>
+            <svg
+              className="hidden lg:block w-4 h-4 text-[#8b97b5] group-hover:text-white"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="3" ry="3"></rect>
+              <line x1="9" y1="3" x2="9" y2="21"></line>
+            </svg>
+            <i className="bi bi-x-lg lg:hidden text-white text-xs font-bold"></i>
           </button>
         </div>
 
@@ -125,12 +137,12 @@ const Sidebar = ({ isOpen, onClose }) => {
           </NavLink>
 
           <NavLink
-            to="/profile"
+            to="/whatsapp"
             className={({ isActive }) => (isActive ? 'on' : '')}
             onClick={onClose}
           >
-            <i className="bi bi-gear"></i>
-            <span>Business Profile</span>
+            <i className="bi bi-whatsapp text-[#25D366]"></i>
+            <span>WhatsApp Connect</span>
           </NavLink>
         </nav>
 

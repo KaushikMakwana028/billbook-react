@@ -24,11 +24,19 @@
   --sh: none;
 }
 
+html,
+body,
+button,
+input,
+select,
+textarea {
+  font-family: "Urbanist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif !important;
+}
+
 body {
-  font-family: 'Instrument Sans', system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--ink);
-  font-size: 13px;
+  font-size: 13.5px;
   letter-spacing: -0.005em;
   transition: background 0.3s, color 0.3s;
   margin: 0;
@@ -670,8 +678,8 @@ button {
 /* ── Plot / Chart ── */
 .plot {
   position: relative;
-  height: 160px;
-  margin: 14px 0 0 42px;
+  height: 270px;
+  margin: 18px 12px 34px 68px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -680,14 +688,16 @@ button {
   left: 0;
   right: 0;
   height: 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px dashed var(--line);
+  pointer-events: none;
 }
 
 .plot-grid span {
   position: absolute;
-  right: calc(100% + 10px);
+  right: calc(100% + 12px);
   top: -8px;
   font-size: 11px;
+  font-weight: 500;
   color: var(--mut);
   white-space: nowrap;
 }
@@ -698,30 +708,66 @@ button {
   display: flex;
   justify-content: space-around;
   align-items: flex-end;
+  gap: 6px;
+  padding: 0 4px;
 }
 
 .cl {
-  width: 32px;
+  flex: 1;
+  max-width: 58px;
+  min-width: 24px;
   height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
+  align-items: center;
   position: relative;
+  border-radius: 8px 8px 0 0;
+  padding: 0 3px;
+  transition: background 0.15s ease;
 }
 
-.cl div {
+.cl:hover {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.cl .bar-group {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  height: 100%;
   width: 100%;
-  transition: height 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+.cl .bar-s,
 .cl .s {
-  background: var(--blue);
-  border-radius: 6px 6px 0 0;
+  flex: 1;
+  max-width: 14px;
+  min-width: 4px;
+  background: var(--blue, #2563eb);
+  border-radius: 4px 4px 0 0;
+  transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1), filter 0.15s ease;
 }
 
+.cl .bar-p,
 .cl .b {
-  background: var(--green);
-  border-radius: 6px 6px 0 0;
+  flex: 1;
+  max-width: 14px;
+  min-width: 4px;
+  background: var(--green, #10b981);
+  border-radius: 4px 4px 0 0;
+  transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1), filter 0.15s ease;
+}
+
+.cl:hover .bar-s,
+.cl:hover .s {
+  filter: brightness(1.15);
+}
+
+.cl:hover .bar-p,
+.cl:hover .b {
+  filter: brightness(1.15);
 }
 
 .cl.st .s {
@@ -735,8 +781,9 @@ button {
   transform: translateX(-50%);
   font-style: normal;
   font-size: 11px;
+  font-weight: 500;
   color: var(--mut);
-  margin-top: 8px;
+  margin-top: 10px;
   white-space: nowrap;
 }
 
@@ -758,23 +805,49 @@ button {
 
 .tip {
   position: absolute;
+  bottom: calc(100% + 10px);
   left: 50%;
   transform: translate(-50%, 6px);
   background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: #fff;
   font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 7px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.35);
   opacity: 0;
   pointer-events: none;
-  transition: 0.2s;
+  transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
-  z-index: 3;
+  z-index: 30;
+  text-align: left;
 }
 
 .cl:hover .tip {
   opacity: 1;
   transform: translate(-50%, 0);
+}
+
+@media (max-width: 640px) {
+  .plot {
+    height: 220px;
+    margin: 16px 8px 30px 54px;
+  }
+  .plot-grid span {
+    font-size: 10px;
+    right: calc(100% + 6px);
+  }
+  .cl em {
+    font-size: 10px;
+    margin-top: 6px;
+  }
+  .cl {
+    min-width: 20px;
+    padding: 0 1px;
+  }
+  .cl .bar-group {
+    gap: 2px;
+  }
 }
 
 /* ── Feed & Table Items ── */
@@ -853,12 +926,12 @@ button {
 .ov {
   position: fixed;
   inset: 0;
-  background: rgba(10, 15, 30, 0.5);
-  backdrop-filter: blur(3px);
+  background: rgba(10, 15, 30, 0.6);
+  backdrop-filter: blur(4px);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s;
-  z-index: 90;
+  z-index: 1040;
 }
 
 .ov.on {
@@ -1105,6 +1178,23 @@ button {
   height: 6px;
   border-radius: 50%;
   background: currentColor;
+}
+
+[data-theme="dark"] .pill {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.pill.pill-danger,
+.pill-danger {
+  background: #fde8e8 !important;
+  color: #e02424 !important;
+}
+
+[data-theme="dark"] .pill.pill-danger,
+[data-theme="dark"] .pill-danger {
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #f87171 !important;
 }
 
 .big {
@@ -1423,21 +1513,22 @@ button {
 @media (min-width: 1024px) {
   .side {
     position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
+    top: 14px;
+    left: 14px;
+    bottom: 14px;
     width: 250px;
-    height: 100vh;
+    height: calc(100vh - 28px);
     margin: 0;
-    border-radius: 0;
-    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 24px;
+    box-shadow: 0 14px 38px -12px rgba(10, 18, 42, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     z-index: 100;
   }
 
   .main {
-    margin-left: 250px;
-    width: calc(100% - 250px);
-    padding: 16px 28px 40px 24px;
+    margin-left: 268px;
+    width: calc(100% - 268px);
+    padding: 14px 24px 40px 20px;
     min-width: 0;
   }
 
@@ -1454,16 +1545,18 @@ button {
 @media (max-width: 1023px) {
   .side {
     position: fixed;
-    top: 10px;
+    top: 12px;
     left: 12px;
-    right: 12px;
-    width: auto;
-    max-width: calc(100vw - 24px);
-    height: calc(100vh - 20px);
+    bottom: 12px;
+    width: calc(100vw - 24px);
+    max-width: 310px;
+    height: calc(100vh - 24px);
     margin: 0;
     z-index: 1050;
     border-radius: 24px;
-    transform: translateX(-115vw);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.75);
+    transform: translateX(calc(-100vw - 30px));
     transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
@@ -1551,6 +1644,14 @@ button {
     margin-left: 36px;
   }
 
+  .cl {
+    width: 22px;
+  }
+
+  .cl em {
+    font-size: 9px;
+  }
+
   .chip {
     height: 36px;
     padding: 0 10px;
@@ -1569,5 +1670,119 @@ button {
     border-top: 1px solid var(--line);
     font-size: 10px;
     color: var(--mut);
+  }
+}
+
+/* ── Utility overrides & Display Helpers ── */
+.mobile-only {
+  display: block !important;
+}
+
+.desktop-only {
+  display: none !important;
+}
+
+@media (min-width: 768px) {
+  .mobile-only {
+    display: none !important;
+  }
+
+  .desktop-only {
+    display: block !important;
+  }
+}
+
+.hidden {
+  display: none !important;
+}
+
+@media (min-width: 640px) {
+  .sm\:hidden {
+    display: none !important;
+  }
+
+  .sm\:inline-flex {
+    display: inline-flex !important;
+  }
+
+  .sm\:flex {
+    display: flex !important;
+  }
+
+  .sm\:block {
+    display: block !important;
+  }
+}
+
+@media (min-width: 768px) {
+  .md\:hidden {
+    display: none !important;
+  }
+
+  .md\:inline-flex {
+    display: inline-flex !important;
+  }
+
+  .md\:flex {
+    display: flex !important;
+  }
+
+  .md\:block {
+    display: block !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .lg\:hidden {
+    display: none !important;
+  }
+
+  .lg\:inline-flex {
+    display: inline-flex !important;
+  }
+
+  .lg\:flex {
+    display: flex !important;
+  }
+
+  .lg\:block {
+    display: block !important;
+  }
+}
+
+/* Scrollable segment control on mobile */
+.seg.mobile-scroll {
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.seg.mobile-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Barcode Printable Sheet Print Layout ── */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-barcode-sheet,
+  #printable-barcode-sheet * {
+    visibility: visible;
+  }
+  #printable-barcode-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 10px !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .no-print {
+    display: none !important;
   }
 }

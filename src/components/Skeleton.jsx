@@ -50,7 +50,7 @@ export const SkeletonChart = () => {
         <Skeleton width="90px" height="14px" />
         <Skeleton width="90px" height="14px" />
       </div>
-      <div className="h-48 flex items-end justify-between gap-3 pt-6 px-4">
+      <div className="h-64 flex items-end justify-between gap-3 pt-6 px-4">
         {[40, 75, 55, 90, 60, 80, 45].map((h, i) => (
           <div key={i} className="flex-1 flex flex-col justify-end items-center gap-2 h-full">
             <Skeleton width="100%" height={`${h}%`} style={{ borderRadius: '6px 6px 0 0' }} />

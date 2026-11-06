@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import productService from '../services/productService';
 import categoryService from '../services/categoryService';
+import Pagination from '../components/Pagination';
 import toast from 'react-hot-toast';
 
 const Products = () => {
@@ -12,10 +13,20 @@ const Products = () => {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRows, setTotalRows] = useState(0);
+  const [serverValuation, setServerValuation] = useState(0);
+  const [serverCatalogCount, setServerCatalogCount] = useState(0);
+  const [serverLowStockCount, setServerLowStockCount] = useState(0);
+  const limit = 10;
+
   // Filters
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(categoryParam || 'all');
-  const [stockFilter, setStockFilter] = useState('all'); // 'all', 'in_stock', 'low_stock', 'out_of_stock'
+  const [stockFilter, setStockFilter] = useState('all'); // 'all', 'low_stock', 'out_of_stock'
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'active', 'disabled'
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -30,6 +41,7 @@ const Products = () => {
     sale_price: '',
     purchase_price: '',
     quantity: '',
+    barcode: '',
     description: '',
     status: 'active',
   });
@@ -42,31 +54,76 @@ const Products = () => {
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Fetch Products & Categories
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [prodRes, catRes] = await Promise.all([
-        productService.getProducts(),
-        categoryService.getCategories(),
-      ]);
+  // Barcode Print Sheet State
+  const [barcodePrintModalOpen, setBarcodePrintModalOpen] = useState(false);
+  const [barcodePrintLoading, setBarcodePrintLoading] = useState(false);
+  const [barcodeSheetData, setBarcodeSheetData] = useState([]);
+  const [barcodeCopiesMap, setBarcodeCopiesMap] = useState({});
 
-      if (prodRes.status && Array.isArray(prodRes.data)) {
-        setProducts(prodRes.data);
-      }
+  // Fetch Categories for Dropdown
+  const fetchCategories = async () => {
+    try {
+      const catRes = await categoryService.getCategories();
       if (catRes.status && Array.isArray(catRes.data)) {
         setCategories(catRes.data);
       }
+    } catch {
+      // ignore
+    }
+  };
+
+  // Fetch Paginated Products
+  const fetchProducts = async (page = 1) => {
+    setLoading(true);
+    try {
+      let mappedStock = 'all';
+      if (stockFilter === 'low_stock') mappedStock = 'low';
+      if (stockFilter === 'out_of_stock') mappedStock = 'out';
+
+      const res = await productService.getProducts({
+        page,
+        limit,
+        search: search.trim(),
+        category_id: selectedCategory,
+        stock_filter: mappedStock,
+        status_filter: statusFilter,
+      });
+
+      if (res.status && res.data) {
+        if (res.data.products) {
+          setProducts(res.data.products || []);
+          setTotalRows(res.data.total_rows || 0);
+          setTotalPages(res.data.total_pages || 1);
+          setCurrentPage(res.data.current_page || 1);
+          if (res.data.total_valuation !== undefined) {
+            setServerValuation(res.data.total_valuation);
+            setServerCatalogCount(res.data.total_catalog);
+            setServerLowStockCount(res.data.low_stock_count);
+          }
+        } else if (Array.isArray(res.data)) {
+          setProducts(res.data);
+          setTotalRows(res.data.length);
+          setTotalPages(Math.ceil(res.data.length / limit) || 1);
+          setCurrentPage(page);
+        }
+      }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Error loading inventory data.');
+      toast.error('Error loading inventory data.');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    fetchCategories();
   }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchProducts(1);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [search, selectedCategory, stockFilter, statusFilter]);
 
   useEffect(() => {
     if (categoryParam) {
@@ -102,7 +159,12 @@ const Products = () => {
     if (stockFilter === 'low_stock') matchesStock = qty > 0 && qty <= 5;
     if (stockFilter === 'out_of_stock') matchesStock = qty === 0;
 
-    return matchesSearch && matchesCategory && matchesStock;
+    const isActive = p.isActive == 1 || p.isActive === '1' || p.status === 'active';
+    let matchesStatus = true;
+    if (statusFilter === 'active') matchesStatus = isActive;
+    if (statusFilter === 'disabled') matchesStatus = !isActive;
+
+    return matchesSearch && matchesCategory && matchesStock && matchesStatus;
   });
 
   // Inventory Totals
@@ -118,15 +180,25 @@ const Products = () => {
   }).length;
 
   // Form Handlers
-  const handleOpenAdd = () => {
+  const handleOpenAdd = async () => {
     setModalMode('add');
     setEditingProduct(null);
+    let initialBarcode = '';
+    try {
+      const res = await productService.generateBarcode();
+      if (res.status && res.data?.barcode) {
+        initialBarcode = res.data.barcode;
+      }
+    } catch {
+      initialBarcode = String(Math.floor(100000 + Math.random() * 900000));
+    }
     setFormData({
       name: '',
       category_id: categories.length > 0 ? categories[0].id : '',
       sale_price: '',
       purchase_price: '',
       quantity: '',
+      barcode: initialBarcode,
       description: '',
       status: 'active',
     });
@@ -144,12 +216,80 @@ const Products = () => {
       sale_price: prod.sale_price || prod.price || '',
       purchase_price: prod.purchase_price || '',
       quantity: prod.quantity || '0',
+      barcode: prod.barcode || '',
       description: prod.description || '',
       status: prod.isActive == 1 ? 'active' : 'inactive',
     });
     setPreviewImage(prod.image || null);
     setSelectedFile(null);
     setModalOpen(true);
+  };
+
+  const handleGenerateBarcode = async () => {
+    try {
+      const res = await productService.generateBarcode();
+      if (res.status && res.data?.barcode) {
+        setFormData((prev) => ({ ...prev, barcode: res.data.barcode }));
+        toast.success(`Generated barcode: ${res.data.barcode}`);
+      }
+    } catch {
+      const rnd = String(Math.floor(100000 + Math.random() * 900000));
+      setFormData((prev) => ({ ...prev, barcode: rnd }));
+      toast.success(`Generated barcode: ${rnd}`);
+    }
+  };
+
+  // Barcode Print Sheet Handlers
+  const handleOpenBarcodePrint = async (productOrProducts) => {
+    const list = Array.isArray(productOrProducts) ? productOrProducts : [productOrProducts];
+    if (list.length === 0) {
+      toast.error('No products available to print barcodes.');
+      return;
+    }
+
+    setBarcodePrintModalOpen(true);
+    setBarcodePrintLoading(true);
+
+    const copiesMap = {};
+    list.forEach((p) => {
+      copiesMap[p.id] = list.length === 1 ? 4 : 2;
+    });
+    setBarcodeCopiesMap(copiesMap);
+
+    try {
+      const param = list.map((p) => `${p.id}:${copiesMap[p.id] || 1}`).join(',');
+      const res = await productService.getBarcodeSheet(param);
+      if (res.status && res.data?.items) {
+        setBarcodeSheetData(res.data.items);
+      } else {
+        toast.error('Could not load barcode sheet.');
+      }
+    } catch (err) {
+      console.error('Barcode sheet error:', err);
+      toast.error('Error connecting to barcode printing service.');
+    } finally {
+      setBarcodePrintLoading(false);
+    }
+  };
+
+  const handleUpdateCopies = async (productId, delta) => {
+    const current = barcodeCopiesMap[productId] || 1;
+    const next = Math.max(1, Math.min(100, current + delta));
+    const updatedMap = { ...barcodeCopiesMap, [productId]: next };
+    setBarcodeCopiesMap(updatedMap);
+
+    const param = Object.entries(updatedMap)
+      .map(([id, copies]) => `${id}:${copies}`)
+      .join(',');
+
+    try {
+      const res = await productService.getBarcodeSheet(param);
+      if (res.status && res.data?.items) {
+        setBarcodeSheetData(res.data.items);
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleFileChange = (e) => {
@@ -197,6 +337,7 @@ const Products = () => {
         payload.append('stock', formData.quantity || '0');
         payload.append('description', formData.description.trim());
         payload.append('status', formData.status);
+        payload.append('barcode', (formData.barcode || '').trim());
         payload.append('product_image', selectedFile);
 
         if (modalMode === 'edit') {
@@ -210,6 +351,7 @@ const Products = () => {
           price: formData.sale_price,
           costPrice: formData.purchase_price || '0',
           stock: formData.quantity || '0',
+          barcode: (formData.barcode || '').trim(),
           description: formData.description.trim(),
           status: formData.status,
         };
@@ -224,7 +366,7 @@ const Products = () => {
         if (res.status) {
           toast.success(res.message || 'Product created successfully!');
           setModalOpen(false);
-          fetchData();
+          fetchProducts(1);
         } else {
           toast.error(res.message || 'Failed to create product.');
         }
@@ -233,7 +375,7 @@ const Products = () => {
         if (res.status) {
           toast.success(res.message || 'Product updated successfully!');
           setModalOpen(false);
-          fetchData();
+          fetchProducts(currentPage);
         } else {
           toast.error(res.message || 'Failed to update product.');
         }
@@ -253,7 +395,7 @@ const Products = () => {
       if (res.status) {
         toast.success(res.message || 'Product deleted successfully!');
         setDeleteId(null);
-        fetchData();
+        fetchProducts(currentPage);
       } else {
         toast.error(res.message || 'Could not delete product.');
       }
@@ -270,30 +412,66 @@ const Products = () => {
   const marginAmt = saleNum - costNum;
   const marginPct = saleNum > 0 ? Math.round((marginAmt / saleNum) * 100) : 0;
 
+  // Stock badge helper
+  const renderStockBadge = (qty) => {
+    if (qty === 0) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[11px] bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800 shadow-sm">
+          <i className="bi bi-x-circle-fill"></i>
+          <span>Out of Stock</span>
+        </span>
+      );
+    }
+    if (qty <= 5) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[11px] bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800 shadow-sm animate-pulse">
+          <i className="bi bi-exclamation-triangle-fill"></i>
+          <span>{qty} left (Low)</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[11px] bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800 shadow-sm">
+        <i className="bi bi-check-circle-fill"></i>
+        <span>{qty} in stock</span>
+      </span>
+    );
+  };
+
   return (
     <div className="space-y-4">
       {/* ── Header & Action Bar ── */}
-      <div className="flex items-center justify-between gap-3 mb-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-2">
         <div className="min-w-0">
           <div className="text-[11px] text-[var(--mut)] flex items-center gap-1.5 mb-0.5 font-medium">
             <i className="bi bi-box-seam text-[var(--blue)]"></i>
             <span>Catalog & Stock Management</span>
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold text-[var(--ink)] tracking-tight truncate">Products Inventory</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-[var(--ink)] tracking-tight">Products Inventory</h1>
           <p className="text-xs text-[var(--mut)] hidden sm:block mt-0.5">
             Manage items, sale prices, cost pricing, margins, and monitor stock levels.
           </p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <div className="chip hidden md:inline-flex text-xs">
+          <div className="chip !hidden md:!inline-flex text-xs">
             <i className="bi bi-boxes text-[var(--blue)]"></i>
-            <span><b>{products.length}</b> Items</span>
+            <span><b>{serverCatalogCount || totalRows || products.length}</b> Items</span>
             <span className="mx-1 opacity-40">•</span>
             <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-              Valuation: {fmtCurrency(totalStockValuation)}
+              Valuation: {fmtCurrency(serverValuation || totalStockValuation)}
             </span>
           </div>
+
+          <button
+            type="button"
+            onClick={() => handleOpenBarcodePrint(products)}
+            className="chip !h-9 !px-3 text-xs font-semibold flex items-center gap-1.5 shrink-0 hover:text-[var(--blue)] cursor-pointer"
+            title="Print barcode stickers for visible products"
+          >
+            <i className="bi bi-printer text-[var(--blue)]"></i>
+            <span className="hidden sm:inline">Print Barcodes</span>
+          </button>
 
           <button
             onClick={handleOpenAdd}
@@ -307,115 +485,138 @@ const Products = () => {
 
       {/* ── Mini KPI Row (Compact 3-column row on all screens) ── */}
       <div className="grid grid-cols-3 gap-2 sm:gap-3.5">
-        <div className="card2 !p-2.5 sm:!p-3.5 flex flex-col sm:flex-row items-center gap-1.5 sm:gap-3 text-center sm:text-left">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-blue-500/10 text-[var(--blue)] flex items-center justify-center text-sm sm:text-lg shrink-0">
+        <div className="card2 !p-2 sm:!p-3.5 flex flex-col sm:flex-row items-center gap-1 sm:gap-3 text-center sm:text-left">
+          <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-xl bg-blue-500/10 text-[var(--blue)] flex items-center justify-center text-xs sm:text-lg shrink-0">
             <i className="bi bi-box-seam"></i>
           </div>
-          <div className="min-w-0">
-            <span className="text-[10px] sm:text-[11px] text-[var(--mut)] block truncate">Total Items</span>
-            <b className="text-xs sm:text-base font-bold text-[var(--ink)] leading-tight block">
-              {products.length} <span className="hidden sm:inline">Products</span>
+          <div className="min-w-0 w-full sm:w-auto">
+            <span className="text-[9px] sm:text-[11px] text-[var(--mut)] block truncate">Total Items</span>
+            <b className="text-[11px] sm:text-base font-bold text-[var(--ink)] leading-tight block truncate">
+              {serverCatalogCount || totalRows || products.length} <span className="hidden sm:inline">Products</span>
             </b>
           </div>
         </div>
 
-        <div className="card2 !p-2.5 sm:!p-3.5 flex flex-col sm:flex-row items-center gap-1.5 sm:gap-3 text-center sm:text-left">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm sm:text-lg shrink-0">
+        <div className="card2 !p-2 sm:!p-3.5 flex flex-col sm:flex-row items-center gap-1 sm:gap-3 text-center sm:text-left">
+          <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xs sm:text-lg shrink-0">
             <i className="bi bi-cash-stack"></i>
           </div>
-          <div className="min-w-0">
-            <span className="text-[10px] sm:text-[11px] text-[var(--mut)] block truncate">Valuation (Cost)</span>
-            <b className="text-xs sm:text-base font-bold text-emerald-600 dark:text-emerald-400 leading-tight block truncate">
-              {fmtCurrency(totalStockValuation)}
+          <div className="min-w-0 w-full sm:w-auto">
+            <span className="text-[9px] sm:text-[11px] text-[var(--mut)] block truncate">Valuation (Cost)</span>
+            <b className="text-[11px] sm:text-base font-bold text-emerald-600 dark:text-emerald-400 leading-tight block truncate" title={fmtCurrency(serverValuation || totalStockValuation)}>
+              {fmtCurrency(serverValuation || totalStockValuation)}
             </b>
           </div>
         </div>
 
-        <div className="card2 !p-2.5 sm:!p-3.5 flex flex-col sm:flex-row items-center gap-1.5 sm:gap-3 text-center sm:text-left">
-          <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-sm sm:text-lg shrink-0 ${
-            lowStockCount > 0 ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-gray-500/10 text-gray-500'
+        <div className="card2 !p-2 sm:!p-3.5 flex flex-col sm:flex-row items-center gap-1 sm:gap-3 text-center sm:text-left">
+          <div className={`w-7 h-7 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-xs sm:text-lg shrink-0 ${
+            (serverLowStockCount || lowStockCount) > 0 ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-gray-500/10 text-gray-500'
           }`}>
             <i className="bi bi-exclamation-triangle"></i>
           </div>
-          <div className="min-w-0">
-            <span className="text-[10px] sm:text-[11px] text-[var(--mut)] block truncate">Low Stock (≤5)</span>
-            <b className={`text-xs sm:text-base font-bold leading-tight block truncate ${
-              lowStockCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-[var(--ink)]'
+          <div className="min-w-0 w-full sm:w-auto">
+            <span className="text-[9px] sm:text-[11px] text-[var(--mut)] block truncate">Low Stock (≤5)</span>
+            <b className={`text-[11px] sm:text-base font-bold leading-tight block truncate ${
+              (serverLowStockCount || lowStockCount) > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-[var(--ink)]'
             }`}>
-              {lowStockCount} <span className="hidden sm:inline">Critical</span>
+              {serverLowStockCount || lowStockCount} <span className="hidden sm:inline">Critical</span>
             </b>
           </div>
         </div>
       </div>
 
       {/* ── Search & Filter Controls ── */}
-      <div className="card2 !p-3 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5">
-        {/* Search Input Box (No Overlap) */}
-        <div className="search-input-wrap md:w-80">
-          <i className="bi bi-search"></i>
-          <input
-            type="text"
-            className="search-input"
-            placeholder="Search by product name..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search && (
-            <button
-              onClick={() => setSearch('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--mut)] hover:text-[var(--ink)] z-10"
-              title="Clear search"
-            >
-              <i className="bi bi-x-circle"></i>
-            </button>
-          )}
-        </div>
+      <div className="card2 !p-3">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5">
+          {/* Search Input Box + Mobile Refresh Button */}
+          <div className="flex items-center gap-2 flex-1 min-w-[180px]">
+            <div className="search-input-wrap flex-1">
+              <i className="bi bi-search"></i>
+              <input
+                type="text"
+                className="search-input text-xs"
+                placeholder="Search products by name or barcode..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--mut)] hover:text-[var(--ink)] z-10"
+                  title="Clear search"
+                >
+                  <i className="bi bi-x-circle"></i>
+                </button>
+              )}
+            </div>
 
-        {/* Dropdowns & Filters */}
-        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-between md:justify-end">
-          {/* Category Dropdown */}
-          <select
-            className="auth-input !h-[38px] !w-auto text-xs py-1 px-3 cursor-pointer flex-1 sm:flex-none"
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-          >
-            <option value="all">All Categories ({categories.length})</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-
-          {/* Stock Filter Segments */}
-          <div className="seg text-xs shrink-0">
+            {/* Refresh Button on Mobile (Aligned right beside search input) */}
             <button
-              className={stockFilter === 'all' ? 'on' : ''}
-              onClick={() => setStockFilter('all')}
+              type="button"
+              onClick={() => fetchProducts(1)}
+              className="chip !h-[38px] !w-[38px] !px-0 flex md:hidden items-center justify-center shrink-0 cursor-pointer hover:text-[var(--blue)]"
+              title="Refresh inventory"
             >
-              All
-            </button>
-            <button
-              className={stockFilter === 'low_stock' ? 'on' : ''}
-              onClick={() => setStockFilter('low_stock')}
-            >
-              Low Stock
-            </button>
-            <button
-              className={stockFilter === 'out_of_stock' ? 'on' : ''}
-              onClick={() => setStockFilter('out_of_stock')}
-            >
-              Out of Stock
+              <i className="bi bi-arrow-clockwise text-sm"></i>
             </button>
           </div>
 
-          <button
-            onClick={fetchData}
-            className="chip !h-[38px] !px-2.5 text-xs shrink-0"
-            title="Refresh inventory"
-          >
-            <i className="bi bi-arrow-clockwise"></i>
-          </button>
+          {/* Filter Dropdowns: Full-width Category on Mobile, 50-50 Status & Stock; Inline on Desktop */}
+          <div className="grid grid-cols-2 md:flex md:items-center gap-2 shrink-0">
+            {/* Category Filter Dropdown (Spans full width on mobile so names never truncate!) */}
+            <div className="col-span-2 md:col-auto md:w-[165px]">
+              <select
+                className="auth-input !h-[38px] text-xs py-1 px-3 cursor-pointer w-full truncate"
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+              >
+                <option value="all">All Categories ({categories.length})</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status Filter Dropdown */}
+            <div className="col-span-1 md:w-[125px]">
+              <select
+                className="auth-input !h-[38px] text-xs py-1 px-3 cursor-pointer w-full"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </div>
+
+            {/* Stock Level Filter Dropdown */}
+            <div className="col-span-1 md:w-[135px]">
+              <select
+                className="auth-input !h-[38px] text-xs py-1 px-3 cursor-pointer w-full"
+                value={stockFilter}
+                onChange={(e) => setStockFilter(e.target.value)}
+              >
+                <option value="all">All Stock</option>
+                <option value="low_stock">Low Stock (≤5)</option>
+                <option value="out_of_stock">Out of Stock</option>
+              </select>
+            </div>
+
+            {/* Refresh Button on Desktop (at end of single horizontal line) */}
+            <button
+              type="button"
+              onClick={() => fetchProducts(1)}
+              className="chip !h-[38px] !w-[38px] !px-0 hidden md:flex items-center justify-center shrink-0 cursor-pointer hover:text-[var(--blue)]"
+              title="Refresh inventory"
+            >
+              <i className="bi bi-arrow-clockwise text-sm"></i>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -433,129 +634,271 @@ const Products = () => {
             </div>
           ))}
         </div>
-      ) : filteredProducts.length > 0 ? (
-        <div className="card2 !p-0 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-[var(--line)] bg-[var(--soft)]/50 text-[11px] font-semibold text-[var(--mut)] uppercase tracking-wider">
-                  <th className="py-3 px-4">Product</th>
-                  <th className="py-3 px-3">Category</th>
-                  <th className="py-3 px-3 text-right">Sale Price</th>
-                  <th className="py-3 px-3 text-right hidden sm:table-cell">Purchase Cost</th>
-                  <th className="py-3 px-3 text-center">Stock Qty</th>
-                  <th className="py-3 px-3 text-center">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--line)] text-xs">
-                {filteredProducts.map((prod) => {
-                  const qty = parseInt(prod.quantity, 10) || 0;
-                  const saleP = parseFloat(prod.sale_price) || parseFloat(prod.price) || 0;
-                  const costP = parseFloat(prod.purchase_price) || 0;
-                  const margin = saleP - costP;
-                  const isActive = prod.isActive == 1 || prod.isActive === '1';
+      ) : products.length > 0 ? (
+        <>
+          {/* Mobile Native Card List (Visible on < 768px) */}
+          <div className="mobile-only space-y-2.5">
+            {products.map((prod) => {
+              const qty = parseInt(prod.quantity, 10) || 0;
+              const saleP = parseFloat(prod.sale_price) || parseFloat(prod.price) || 0;
+              const costP = parseFloat(prod.purchase_price) || 0;
+              const margin = saleP - costP;
+              const isActive = prod.isActive == 1 || prod.isActive === '1';
 
-                  return (
-                    <tr key={prod.id} className="hover:bg-[var(--soft)]/40 transition-colors">
-                      {/* Product Thumbnail & Name */}
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-[var(--soft)] border border-[var(--line)] overflow-hidden flex items-center justify-center shrink-0">
-                            {prod.image ? (
-                              <img
-                                src={prod.image}
-                                alt={prod.name}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  e.target.style.display = 'none';
-                                }}
-                              />
-                            ) : (
-                              <i className="bi bi-box-seam text-base text-[var(--blue)]"></i>
-                            )}
-                          </div>
-                          <div className="min-w-0 max-w-[220px]">
-                            <b className="font-semibold text-[13px] text-[var(--ink)] block truncate" title={prod.name}>
-                              {prod.name}
-                            </b>
-                            <span className="text-[11px] text-[var(--mut)] block truncate" title={prod.description}>
-                              {prod.description || `SKU #${prod.id}`}
+              return (
+                <div
+                  key={prod.id}
+                  className="card2 !p-3.5 space-y-2.5 hover:border-[var(--blue)] transition-all"
+                >
+                  {/* Top: Product image + Name + Status */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-[var(--soft)] border border-[var(--line)] overflow-hidden flex items-center justify-center shrink-0">
+                      {prod.image ? (
+                        <img
+                          src={prod.image}
+                          alt={prod.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <i className="bi bi-box-seam text-lg text-[var(--blue)]"></i>
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <b className="font-bold text-[13px] text-[var(--ink)] leading-snug line-clamp-1" title={prod.name}>
+                          {prod.name}
+                        </b>
+                        <span className={`pill shrink-0 !text-[10px] !py-0.5 !px-2 font-medium ${isActive ? '' : 'pill-danger'}`}>
+                          {isActive ? 'Active' : 'Disabled'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 mt-1 text-[11px] text-[var(--mut)] flex-wrap">
+                        <span className="inline-flex items-center gap-1 font-medium text-[var(--blue)]">
+                          <i className="bi bi-tag text-[10px]"></i> {prod.category_name || 'Unassigned'}
+                        </span>
+                        <span>•</span>
+                        <span>#{prod.id}</span>
+                        {prod.barcode && (
+                          <>
+                            <span>•</span>
+                            <span className="font-mono text-[10px] text-[var(--mut)] bg-[var(--soft)] px-1.5 py-0.5 rounded border border-[var(--line)]">
+                              <i className="bi bi-upc mr-1 text-[var(--blue)]"></i>
+                              {prod.barcode}
                             </span>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Category */}
-                      <td className="py-3 px-3">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-[var(--blue)] font-medium text-[11px]">
-                          <i className="bi bi-tag text-[10px]"></i>
-                          <span>{prod.category_name || 'Unassigned'}</span>
-                        </span>
-                      </td>
-
-                      {/* Sale Price */}
-                      <td className="py-3 px-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">
-                        {fmtCurrency(saleP)}
-                      </td>
-
-                      {/* Purchase Cost & Margin */}
-                      <td className="py-3 px-3 text-right hidden sm:table-cell">
-                        <div className="text-[var(--mut)]">{fmtCurrency(costP)}</div>
-                        {margin > 0 && (
-                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block font-medium">
-                            +{fmtCurrency(margin)} margin
-                          </span>
+                          </>
                         )}
-                      </td>
+                      </div>
+                    </div>
+                  </div>
 
-                      {/* Stock Quantity Badge */}
-                      <td className="py-3 px-3 text-center">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-bold text-xs shadow-sm tracking-tight ${
-                          qty === 0
-                            ? 'bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
-                            : qty <= 5
-                            ? 'bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800 animate-pulse'
-                            : 'bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
-                        }`}>
-                          <i className={`bi ${qty === 0 ? 'bi-x-circle-fill' : qty <= 5 ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill'}`}></i>
-                          <span>{qty} in stock</span>
+                  {/* Middle: Pricing & Stock status */}
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[var(--line)] text-xs">
+                    <div>
+                      <span className="text-[10px] text-[var(--mut)] block">Sale Price</span>
+                      <b className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                        {fmtCurrency(saleP)}
+                      </b>
+                      <span className="text-[10px] text-[var(--mut)] block mt-0.5">
+                        Cost: {fmtCurrency(costP)}
+                      </span>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-[10px] text-[var(--mut)] block mb-0.5">Inventory Stock</span>
+                      {renderStockBadge(qty)}
+                      {margin !== 0 && (
+                        <span className={`text-[10px] block font-medium mt-1 ${margin >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}`}>
+                          Margin: {margin >= 0 ? '+' : ''}{fmtCurrency(margin)}
                         </span>
-                      </td>
+                      )}
+                    </div>
+                  </div>
 
-                      {/* Status */}
-                      <td className="py-3 px-3 text-center">
-                        <span className={`pill !text-[11px] !py-0.5 !px-2.5 ${isActive ? '' : '!bg-gray-100 !text-gray-500 dark:!bg-gray-800'}`}>
-                          {isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
+                  {/* Bottom: Quantity count & Actions */}
+                  <div className="pt-2 border-t border-[var(--line)] flex items-center justify-between">
+                    <span className="text-[11px] text-[var(--mut)]">
+                      Units: <b className="text-[var(--ink)] font-semibold">{qty} available</b>
+                    </span>
 
-                      {/* Actions */}
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => handleOpenEdit(prod)}
-                            className="w-7 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-[var(--card)] hover:text-[var(--blue)] text-[var(--mut)] flex items-center justify-center transition-colors text-xs"
-                            title="Edit Product"
-                          >
-                            <i className="bi bi-pencil"></i>
-                          </button>
-                          <button
-                            onClick={() => setDeleteId(prod.id)}
-                            className="w-7 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-500 text-[var(--mut)] flex items-center justify-center transition-colors text-xs"
-                            title="Delete Product"
-                          >
-                            <i className="bi bi-trash"></i>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenBarcodePrint(prod)}
+                        className="px-2.5 py-1 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-[var(--card)] hover:text-emerald-600 text-xs font-semibold text-[var(--ink)] flex items-center gap-1 transition-colors"
+                        title="Print Barcode Stickers"
+                      >
+                        <i className="bi bi-printer text-emerald-600"></i>
+                        <span>Print</span>
+                      </button>
+                      <button
+                        onClick={() => handleOpenEdit(prod)}
+                        className="px-2.5 py-1 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-[var(--card)] hover:text-[var(--blue)] text-xs font-semibold text-[var(--ink)] flex items-center gap-1 transition-colors"
+                      >
+                        <i className="bi bi-pencil"></i>
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        onClick={() => setDeleteId(prod.id)}
+                        className="px-2.5 py-1 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-500 text-xs font-semibold text-rose-500 flex items-center gap-1 transition-colors"
+                      >
+                        <i className="bi bi-trash"></i>
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
+
+          {/* Desktop Table (Visible on ≥ 768px) */}
+          <div className="desktop-only card2 !p-0 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-[var(--line)] bg-[var(--soft)]/50 text-[11px] font-semibold text-[var(--mut)] uppercase tracking-wider">
+                    <th className="py-3 px-4">Product</th>
+                    <th className="py-3 px-3">Category</th>
+                    <th className="py-3 px-3 text-right">Sale Price</th>
+                    <th className="py-3 px-3 text-right hidden sm:table-cell">Purchase Cost</th>
+                    <th className="py-3 px-3 text-center">Stock Qty</th>
+                    <th className="py-3 px-3 text-center">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--line)] text-xs">
+                  {products.map((prod) => {
+                    const qty = parseInt(prod.quantity, 10) || 0;
+                    const saleP = parseFloat(prod.sale_price) || parseFloat(prod.price) || 0;
+                    const costP = parseFloat(prod.purchase_price) || 0;
+                    const margin = saleP - costP;
+                    const isActive = prod.isActive == 1 || prod.isActive === '1';
+
+                    return (
+                      <tr key={prod.id} className="hover:bg-[var(--soft)]/40 transition-colors">
+                        {/* Product Thumbnail & Name */}
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-[var(--soft)] border border-[var(--line)] overflow-hidden flex items-center justify-center shrink-0">
+                              {prod.image ? (
+                                <img
+                                  src={prod.image}
+                                  alt={prod.name}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    e.target.style.display = 'none';
+                                  }}
+                                />
+                              ) : (
+                                <i className="bi bi-box-seam text-base text-[var(--blue)]"></i>
+                              )}
+                            </div>
+                            <div className="min-w-0 max-w-[220px]">
+                              <b className="font-semibold text-[13px] text-[var(--ink)] block truncate" title={prod.name}>
+                                {prod.name}
+                              </b>
+                              <div className="flex items-center gap-1.5 text-[11px] text-[var(--mut)] truncate">
+                                {prod.barcode ? (
+                                  <span className="font-mono text-[10px] bg-[var(--soft)] px-1.5 py-0.5 rounded border border-[var(--line)] inline-flex items-center gap-1 text-[var(--ink)]">
+                                    <i className="bi bi-upc text-[var(--blue)]"></i>
+                                    <span>{prod.barcode}</span>
+                                  </span>
+                                ) : (
+                                  <span>#{prod.id}</span>
+                                )}
+                                {prod.description && (
+                                  <span className="truncate opacity-75">• {prod.description}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Category */}
+                        <td className="py-3 px-3">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-[var(--blue)] font-medium text-[11px]">
+                            <i className="bi bi-tag text-[10px]"></i>
+                            <span>{prod.category_name || 'Unassigned'}</span>
+                          </span>
+                        </td>
+
+                        {/* Sale Price */}
+                        <td className="py-3 px-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">
+                          {fmtCurrency(saleP)}
+                        </td>
+
+                        {/* Purchase Cost & Margin */}
+                        <td className="py-3 px-3 text-right hidden sm:table-cell">
+                          <div className="text-[var(--mut)]">{fmtCurrency(costP)}</div>
+                          {margin > 0 && (
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block font-medium">
+                              +{fmtCurrency(margin)} margin
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Stock Quantity Badge */}
+                        <td className="py-3 px-3 text-center">
+                          {renderStockBadge(qty)}
+                        </td>
+
+                        {/* Status */}
+                        <td className="py-3 px-3 text-center">
+                          <span className={`pill !text-[11px] !py-0.5 !px-2.5 font-medium ${isActive ? '' : 'pill-danger'}`}>
+                            {isActive ? 'Active' : 'Disabled'}
+                          </span>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenBarcodePrint(prod)}
+                              className="w-7 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-[var(--card)] hover:text-emerald-600 text-[var(--mut)] flex items-center justify-center transition-colors text-xs"
+                              title="Print Barcode Stickers"
+                            >
+                              <i className="bi bi-printer text-emerald-600"></i>
+                            </button>
+                            <button
+                              onClick={() => handleOpenEdit(prod)}
+                              className="w-7 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-[var(--card)] hover:text-[var(--blue)] text-[var(--mut)] flex items-center justify-center transition-colors text-xs"
+                              title="Edit Product"
+                            >
+                              <i className="bi bi-pencil"></i>
+                            </button>
+                            <button
+                              onClick={() => setDeleteId(prod.id)}
+                              className="w-7 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-500 text-[var(--mut)] flex items-center justify-center transition-colors text-xs"
+                              title="Delete Product"
+                            >
+                              <i className="bi bi-trash"></i>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Pagination Controls */}
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalRows={totalRows}
+            limit={limit}
+            onPageChange={(p) => fetchProducts(p)}
+            itemName="products"
+          />
+        </>
       ) : (
         /* Empty State */
         <div className="card2 !p-12 text-center">
@@ -684,19 +1027,47 @@ const Products = () => {
                 </select>
               </div>
 
+              {/* Barcode / SKU */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-[var(--mut)] uppercase tracking-wider">
+                    Barcode / SKU
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGenerateBarcode}
+                    className="text-xs text-[var(--blue)] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                    title="Generate unique 6-digit barcode"
+                  >
+                    <i className="bi bi-magic"></i>
+                    <span>Generate Code</span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <i className="bi bi-upc absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mut)] text-sm"></i>
+                  <input
+                    type="text"
+                    className="auth-input text-xs !pl-9 font-mono font-medium"
+                    placeholder="e.g. 581379 (Auto-generated if left empty)"
+                    value={formData.barcode}
+                    onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                  />
+                </div>
+              </div>
+
               {/* Pricing & Stock */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 {/* Selling Price */}
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--mut)] uppercase tracking-wider mb-1.5">
-                    Sale Price (Rs.) <span className="text-rose-500">*</span>
+                  <label className="block text-[11px] sm:text-xs font-semibold text-[var(--mut)] uppercase tracking-wider mb-1 truncate">
+                    Sale (₹) <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
-                    className="auth-input text-xs font-semibold text-emerald-600 dark:text-emerald-400"
-                    placeholder="1500.00"
+                    className="auth-input text-xs font-semibold text-emerald-600 dark:text-emerald-400 !px-2.5"
+                    placeholder="1500"
                     value={formData.sale_price}
                     onChange={(e) => setFormData({ ...formData, sale_price: e.target.value })}
                     required
@@ -705,15 +1076,15 @@ const Products = () => {
 
                 {/* Purchase Cost */}
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--mut)] uppercase tracking-wider mb-1.5">
-                    Cost Price (Rs.)
+                  <label className="block text-[11px] sm:text-xs font-semibold text-[var(--mut)] uppercase tracking-wider mb-1 truncate">
+                    Cost (₹)
                   </label>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
-                    className="auth-input text-xs"
-                    placeholder="1000.00"
+                    className="auth-input text-xs !px-2.5"
+                    placeholder="1000"
                     value={formData.purchase_price}
                     onChange={(e) => setFormData({ ...formData, purchase_price: e.target.value })}
                   />
@@ -721,13 +1092,13 @@ const Products = () => {
 
                 {/* Stock Quantity */}
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--mut)] uppercase tracking-wider mb-1.5">
-                    Stock Quantity <span className="text-rose-500">*</span>
+                  <label className="block text-[11px] sm:text-xs font-semibold text-[var(--mut)] uppercase tracking-wider mb-1 truncate">
+                    Stock Qty <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="number"
                     min="0"
-                    className="auth-input text-xs font-semibold"
+                    className="auth-input text-xs font-semibold !px-2.5"
                     placeholder="10"
                     value={formData.quantity}
                     onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
@@ -854,6 +1225,132 @@ const Products = () => {
               >
                 {deleting ? 'Deleting...' : 'Confirm Delete'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Barcode Print Sheet Modal ── */}
+      {barcodePrintModalOpen && (
+        <div className="fixed inset-0 z-[2500] flex items-center justify-center p-3 sm:p-5 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-4xl bg-[var(--card)] border border-[var(--line)] rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
+            {/* Modal Header (Hidden on print) */}
+            <div className="p-4 border-b border-[var(--line)] flex items-center justify-between shrink-0 no-print">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center text-lg">
+                  <i className="bi bi-upc-scan"></i>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-[var(--ink)]">Print Barcode Stickers</h3>
+                  <p className="text-[11px] text-[var(--mut)]">
+                    Standard 4-column printable sticker layout. Compatible with A4 label sheets & barcode printers.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="btn-b text-xs font-semibold !h-9 px-4 flex items-center gap-2 cursor-pointer"
+                >
+                  <i className="bi bi-printer"></i>
+                  <span>Print Sheet Now</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBarcodePrintModalOpen(false)}
+                  className="w-8 h-8 rounded-lg text-[var(--mut)] hover:text-[var(--ink)] hover:bg-[var(--soft)] flex items-center justify-center text-xs"
+                >
+                  <i className="bi bi-x-lg"></i>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Copies Toolbar (Hidden on print) */}
+            <div className="p-3 bg-[var(--soft)]/50 border-b border-[var(--line)] flex flex-wrap items-center justify-between gap-3 text-xs no-print">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[var(--mut)] font-semibold uppercase tracking-wider text-[11px]">Adjust Copies:</span>
+                <div className="flex items-center gap-2 flex-wrap max-h-24 overflow-y-auto">
+                  {barcodeSheetData.map((item) => (
+                    <div
+                      key={item.product_id}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--card)] border border-[var(--line)]"
+                    >
+                      <span className="font-semibold truncate max-w-[120px]" title={item.product_name}>
+                        {item.product_name}:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateCopies(item.product_id, -1)}
+                        className="w-5 h-5 rounded flex items-center justify-center hover:bg-[var(--soft)] text-[var(--ink)] font-bold"
+                      >
+                        -
+                      </button>
+                      <span className="font-bold text-[var(--blue)] min-w-[18px] text-center">
+                        {barcodeCopiesMap[item.product_id] || item.copies}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateCopies(item.product_id, 1)}
+                        className="w-5 h-5 rounded flex items-center justify-center hover:bg-[var(--soft)] text-[var(--ink)] font-bold"
+                      >
+                        +
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="text-[11px] text-[var(--mut)] shrink-0">
+                Total Stickers:{' '}
+                <b className="text-[var(--ink)] font-bold">
+                  {barcodeSheetData.reduce(
+                    (acc, it) => acc + (barcodeCopiesMap[it.product_id] || it.copies || 1),
+                    0
+                  )}
+                </b>
+              </div>
+            </div>
+
+            {/* Barcode Stickers Printable Sheet */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 bg-gray-50 dark:bg-gray-950">
+              {barcodePrintLoading ? (
+                <div className="py-16 text-center space-y-3">
+                  <div className="w-8 h-8 border-2 border-[var(--blue)] border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  <p className="text-xs text-[var(--mut)] font-medium">Rendering Code 128 barcode stickers...</p>
+                </div>
+              ) : (
+                <div
+                  id="printable-barcode-sheet"
+                  className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-4 rounded-xl shadow-sm text-black"
+                >
+                  {barcodeSheetData.flatMap((item) => {
+                    const copies = barcodeCopiesMap[item.product_id] || item.copies || 1;
+                    return Array.from({ length: copies }).map((_, i) => (
+                      <div
+                        key={`${item.product_id}_${i}`}
+                        className="p-2.5 border border-dashed border-gray-400 rounded-lg text-center flex flex-col items-center justify-between min-h-[110px] bg-white break-inside-avoid"
+                      >
+                        <div className="text-[10px] font-bold text-gray-900 truncate w-full mb-1">
+                          {item.product_name}
+                        </div>
+                        <img
+                          src={`data:image/png;base64,${item.image_base64}`}
+                          alt={item.barcode}
+                          className="max-h-12 w-auto object-contain my-auto"
+                        />
+                        <div className="w-full mt-1 flex items-center justify-between text-[10px] font-mono text-gray-600 px-1 border-t border-gray-200 pt-0.5">
+                          <span className="tracking-widest font-bold">{item.barcode}</span>
+                          <span className="font-bold text-gray-900">
+                            Rs. {Math.round(item.sale_price).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      </div>
+                    ));
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
