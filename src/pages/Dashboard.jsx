@@ -674,7 +674,7 @@ const Dashboard = () => {
             <div className="p-2.5 rounded-xl bg-[var(--soft)] border border-[var(--line)] space-y-1.5 text-xs mt-1">
               <div className="flex justify-between">
                 <span className="text-[var(--mut)]">Firm:</span>
-                <b className="text-[var(--ink)]">{user?.business_name || 'KAUSHIK'}</b>
+                <b className="text-[var(--ink)]">{user?.business_name || 'BILLBOOK'}</b>
               </div>
               <div className="flex justify-between">
                 <span className="text-[var(--mut)]">Owner:</span>

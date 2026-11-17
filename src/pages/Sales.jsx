@@ -796,8 +796,8 @@ const Sales = () => {
         setCreatedInvoice({
           ...res.data.sale,
           pdfUrl: res.data.invoice_pdf_url,
-          imageUrl: res.data.invoice_image_url || (res.data.sale?.id ? `http://localhost/kaushik/billbook/uploads/invoices/invoice-${res.data.sale.id}.jpg` : null),
-          printUrl: res.data.print_invoice_url || `http://localhost/kaushik/billbook/sales/print_invoice/${res.data.sale?.id}`,
+          imageUrl: res.data.invoice_image_url || (res.data.sale?.id ? `https://billbook.visiontechnolabs.com/uploads/invoices/invoice-${res.data.sale.id}.jpg` : null),
+          printUrl: res.data.print_invoice_url || `https://billbook.visiontechnolabs.com/sales/print_invoice/${res.data.sale?.id}`,
           whatsappUrl: res.data.whatsapp_url || res.data.sale?.whatsapp_url,
           whatsappRoute: res.data.whatsapp_route || res.data.sale?.whatsapp_route,
         });
@@ -1509,7 +1509,7 @@ const Sales = () => {
                           <span>View Details</span>
                         </button>
                         <a
-                          href={s.print_invoice_url || `http://localhost/kaushik/billbook/sales/print_invoice/${s.id}`}
+                          href={s.print_invoice_url || `https://billbook.visiontechnolabs.com/sales/print_invoice/${s.id}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-slate-700 dark:text-slate-200 font-semibold hover:underline flex items-center gap-1"
@@ -1522,7 +1522,7 @@ const Sales = () => {
 
                       <div className="flex items-center gap-1.5">
                         <a
-                          href={s.print_invoice_url || `http://localhost/kaushik/billbook/sales/print_invoice/${s.id}`}
+                          href={s.print_invoice_url || `https://billbook.visiontechnolabs.com/sales/print_invoice/${s.id}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="px-2.5 py-1 rounded-lg border border-[var(--line)] bg-[var(--soft)] text-xs font-semibold text-[var(--ink)] flex items-center gap-1 hover:border-rose-400 hover:text-rose-600 transition-colors"
@@ -1533,7 +1533,7 @@ const Sales = () => {
                         </a>
 
                         <a
-                          href={s.invoice_image_url || `http://localhost/kaushik/billbook/uploads/invoices/invoice-${s.id}.jpg`}
+                          href={s.invoice_image_url || `https://billbook.visiontechnolabs.com/uploads/invoices/invoice-${s.id}.jpg`}
                           target="_blank"
                           rel="noopener noreferrer"
                           download={`invoice-${s.invoice_number || s.id}.jpg`}
@@ -1623,7 +1623,7 @@ const Sales = () => {
                             </button>
 
                             <a
-                              href={s.print_invoice_url || `http://localhost/kaushik/billbook/sales/print_invoice/${s.id}`}
+                              href={s.print_invoice_url || `https://billbook.visiontechnolabs.com/sales/print_invoice/${s.id}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="w-7 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-rose-50 hover:border-rose-300 text-rose-500 flex items-center justify-center text-xs transition-colors"
@@ -1633,7 +1633,7 @@ const Sales = () => {
                             </a>
 
                             <a
-                              href={s.invoice_image_url || `http://localhost/kaushik/billbook/uploads/invoices/invoice-${s.id}.jpg`}
+                              href={s.invoice_image_url || `https://billbook.visiontechnolabs.com/uploads/invoices/invoice-${s.id}.jpg`}
                               target="_blank"
                               rel="noopener noreferrer"
                               download={`invoice-${s.invoice_number || s.id}.jpg`}
@@ -1736,7 +1736,7 @@ const Sales = () => {
 
             <div className="grid grid-cols-3 gap-2 pt-2">
               <a
-                href={createdInvoice.printUrl || `http://localhost/kaushik/billbook/sales/print_invoice/${createdInvoice.id}`}
+                href={createdInvoice.printUrl || `https://billbook.visiontechnolabs.com/sales/print_invoice/${createdInvoice.id}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn-b text-xs font-semibold !h-9 justify-center flex items-center gap-1 shadow-sm"
@@ -1818,7 +1818,7 @@ const Sales = () => {
               </div>
               <div className="flex items-center gap-2">
                 <a
-                  href={selectedSaleDetail.print_invoice_url || `http://localhost/kaushik/billbook/sales/print_invoice/${selectedSaleDetail.id}`}
+                  href={selectedSaleDetail.print_invoice_url || `https://billbook.visiontechnolabs.com/sales/print_invoice/${selectedSaleDetail.id}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn-b text-xs font-semibold !h-8 px-3 flex items-center gap-1.5 shadow-sm"
@@ -1829,7 +1829,7 @@ const Sales = () => {
                 </a>
 
                 <a
-                  href={selectedSaleDetail.print_invoice_url || `http://localhost/kaushik/billbook/sales/print_invoice/${selectedSaleDetail.id}`}
+                  href={selectedSaleDetail.print_invoice_url || `https://billbook.visiontechnolabs.com/sales/print_invoice/${selectedSaleDetail.id}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="chip text-xs !h-8 px-2.5 flex items-center gap-1 hover:border-rose-300 text-rose-600"
@@ -1864,12 +1864,12 @@ const Sales = () => {
                     />
                   ) : (
                     <div className="w-14 h-14 rounded-lg bg-white/15 flex items-center justify-center font-black text-xl text-white border border-white/20">
-                      {(selectedSaleDetail.business_info?.name || 'KAUSHIK').slice(0, 2).toUpperCase()}
+                      {(selectedSaleDetail.business_info?.name || 'BILLBOOK').slice(0, 2).toUpperCase()}
                     </div>
                   )}
                   <div>
                     <h2 className="text-xl font-black tracking-wide text-white">
-                      {selectedSaleDetail.business_info?.name || 'KAUSHIK'}
+                      {selectedSaleDetail.business_info?.name || 'BILLBOOK'}
                     </h2>
                     <p className="text-xs text-white/80 leading-relaxed max-w-sm">
                       {selectedSaleDetail.business_info?.address || 'Ahmedabad, Gujarat, India'}
@@ -2080,7 +2080,7 @@ const Sales = () => {
               <div className="pt-3 flex justify-end">
                 <div className="text-right space-y-1">
                   <span className="text-xs text-slate-600 font-semibold block">
-                    For: <b className="text-slate-900">{selectedSaleDetail.business_info?.name || 'KAUSHIK'}</b>
+                    For: <b className="text-slate-900">{selectedSaleDetail.business_info?.name || 'BILLBOOK'}</b>
                   </span>
                   {selectedSaleDetail.signature_url ? (
                     <img

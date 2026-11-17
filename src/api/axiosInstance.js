@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost/kaushik/billbook/';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://billbook.visiontechnolabs.com/';
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,

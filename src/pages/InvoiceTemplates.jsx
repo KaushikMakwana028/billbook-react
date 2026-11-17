@@ -105,7 +105,7 @@ const TemplateMiniPreview = ({ templateId, primaryColor, accentColor }) => {
           <div className="w-[32%] p-2 text-white flex flex-col justify-between shrink-0" style={{ background: primaryColor }}>
             <div className="space-y-1">
               <div className="w-5 h-5 rounded-md bg-white/20 flex items-center justify-center font-bold text-[8.5px]">BB</div>
-              <b className="block text-[8.5px] leading-tight font-bold">Kaushik Corp</b>
+              <b className="block text-[8.5px] leading-tight font-bold">BILLBOOK Corp</b>
               <span className="block text-[7px] text-white/70">Ahmedabad</span>
             </div>
             <div className="text-[7px] text-white/80 border-t border-white/20 pt-1 font-semibold">
@@ -248,11 +248,11 @@ const TemplateFullPreviewModal = ({ templateId, settings, user, onClose, onSelec
   const info = TEMPLATE_DESCRIPTIONS[templateId] || { name: `Template #${templateId}` };
   const pc = settings.primary_color || '#0f172a';
   const ac = settings.accent_color || '#2563eb';
-  const businessName = user?.business_name || user?.shop_name || 'KAUSHIK STORE';
+  const businessName = user?.business_name || user?.shop_name || 'BILLBOOK STORE';
   const businessAddress = user?.address || 'Ahmedabad, Gujarat, India';
   const businessPhone = user?.mobile || user?.phone || '9099780463';
   const logoUrl = user?.profile_image 
-    ? (user.profile_image.startsWith('http') ? user.profile_image : `http://localhost/kaushik/billbook/uploads/profile/${user.profile_image}`)
+    ? (user.profile_image.startsWith('http') ? user.profile_image : `https://billbook.visiontechnolabs.com/uploads/profile/${user.profile_image}`)
     : null;
   const signatureUrl = settings.signature_url;
 

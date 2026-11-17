@@ -194,7 +194,7 @@ const Register = () => {
               <input
                 type="text"
                 className="auth-input"
-                placeholder="Kaushik Makwana"
+                placeholder="John Doe"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required
@@ -208,7 +208,7 @@ const Register = () => {
               <input
                 type="text"
                 className="auth-input"
-                placeholder="Kaushik Electronics"
+                placeholder="BILLBOOK"
                 value={businessName}
                 onChange={(e) => setBusinessName(e.target.value)}
                 required

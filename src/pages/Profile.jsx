@@ -335,7 +335,7 @@ const Profile = () => {
                     value={formData.name}
                     onChange={handleChange}
                     className="auth-input"
-                    placeholder="e.g. Makwana Kaushik"
+                    placeholder="e.g. John Doe"
                     required
                   />
                 </div>
@@ -351,7 +351,7 @@ const Profile = () => {
                     value={formData.business_name}
                     onChange={handleChange}
                     className="auth-input font-medium"
-                    placeholder="e.g. KAUSHIK Electronics"
+                    placeholder="e.g. BILLBOOK"
                     required
                   />
                 </div>
