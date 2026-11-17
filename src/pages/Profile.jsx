@@ -304,10 +304,10 @@ const Profile = () => {
               </p>
             </div>
 
-            <div className="text-[11px] text-[var(--mut)] flex items-center justify-between">
+            {/* <div className="text-[11px] text-[var(--mut)] flex items-center justify-between">
               <span>Account ID:</span>
               <span className="font-mono font-semibold text-[var(--ink)]">#{user?.id || '5'}</span>
-            </div>
+            </div> */}
           </div>
         </div>
 
