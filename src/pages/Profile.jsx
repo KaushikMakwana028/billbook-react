@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { updateUser, logoutUser } from '../redux/authSlice';
 import authService from '../services/authService';
+import { resolveProfileImageUrl } from '../utils/imageUrl';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 
@@ -23,6 +24,7 @@ const Profile = () => {
   });
 
   const [previewImage, setPreviewImage] = useState(null);
+  const [imgError, setImgError] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -42,8 +44,10 @@ const Profile = () => {
           instagram: u.instagram || '',
           facebook: u.facebook || '',
         });
-        setPreviewImage(u.profile_image || u.image || null);
-        dispatch(updateUser(u));
+        const resolved = resolveProfileImageUrl(u.profile_image || u.image || null);
+        setPreviewImage(resolved);
+        setImgError(false);
+        dispatch(updateUser({ ...u, profile_image: resolved, image: resolved }));
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Could not load profile details.');
@@ -221,11 +225,12 @@ const Profile = () => {
           <div className="card2 text-center flex flex-col items-center">
             <div className="relative group my-2">
               <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-[var(--card)] shadow-lg bg-[var(--soft)] flex items-center justify-center">
-                {previewImage ? (
+                {previewImage && !imgError ? (
                   <img
                     src={previewImage}
                     alt={formData.name || 'Profile'}
                     className="w-full h-full object-cover"
+                    onError={() => setImgError(true)}
                   />
                 ) : (
                   <span className="text-3xl font-bold text-[var(--blue)]">
@@ -254,10 +259,10 @@ const Profile = () => {
               />
             </div>
 
-            <h2 className="text-lg font-bold text-[var(--ink)] mt-2">
+            <h2 className="text-lg font-bold text-[var(--ink)] mt-2 truncate max-w-full" title={formData.name}>
               {formData.name || 'Store Owner'}
             </h2>
-            <p className="text-xs text-[var(--mut)]">
+            <p className="text-xs text-[var(--mut)] truncate max-w-full" title={formData.business_name}>
               {formData.business_name || 'Business Account'}
             </p>
 

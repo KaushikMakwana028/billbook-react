@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
+import { updateUser } from '../redux/authSlice';
+import authService from '../services/authService';
+import { resolveProfileImageUrl } from '../utils/imageUrl';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import BottomNav from '../components/BottomNav';
@@ -37,6 +40,21 @@ const PublicRoute = ({ children }) => {
 // Main App Layout Wrapper with Theme Sidebar and Header
 const MainLayout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const dispatch = useDispatch();
+
+  // Auto-sync profile on load to ensure avatar and credentials are fresh
+  useEffect(() => {
+    authService
+      .getMyProfile()
+      .then((res) => {
+        if (res?.status && res?.data) {
+          const u = res.data;
+          const resolved = resolveProfileImageUrl(u.profile_image || u.image || null);
+          dispatch(updateUser({ ...u, profile_image: resolved, image: resolved }));
+        }
+      })
+      .catch(() => {});
+  }, [dispatch]);
 
   return (
     <div className="app">

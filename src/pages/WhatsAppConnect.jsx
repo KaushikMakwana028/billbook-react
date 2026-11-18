@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import { whatsappService } from '../services/whatsappService';
+import { confirmDialog } from '../utils/swal';
 
 export default function WhatsAppConnect() {
   const { user } = useSelector((state) => state.auth);
@@ -70,7 +71,15 @@ export default function WhatsAppConnect() {
   // Handle Disconnect
   const handleDisconnect = async () => {
     if (disconnecting) return;
-    if (!window.confirm('Are you sure you want to disconnect WhatsApp from BillBook?')) {
+    const confirmed = await confirmDialog({
+      title: 'Disconnect WhatsApp?',
+      text: 'Are you sure you want to disconnect WhatsApp from BillBook? You can reconnect anytime by scanning a new QR code.',
+      confirmText: 'Yes, Disconnect',
+      cancelText: 'Cancel',
+      isDestructive: true,
+      icon: 'warning',
+    });
+    if (!confirmed) {
       return;
     }
 

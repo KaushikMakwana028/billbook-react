@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { setCredentials } from '../redux/authSlice';
 import authService from '../services/authService';
+import { resolveProfileImageUrl } from '../utils/imageUrl';
 import toast from 'react-hot-toast';
 
 const Register = () => {
@@ -76,10 +77,12 @@ const Register = () => {
       const res = await authService.verifyRegisterOtp(payload);
       if (res.status && res.data?.token) {
         toast.success('Registration successful! Welcome to BillBook.');
+        const u = res.data.user;
+        const resolvedImage = resolveProfileImageUrl(u?.profile_image || u?.image || null);
         dispatch(
           setCredentials({
             token: res.data.token,
-            user: res.data.user,
+            user: { ...u, profile_image: resolvedImage, image: resolvedImage },
           })
         );
         navigate('/');

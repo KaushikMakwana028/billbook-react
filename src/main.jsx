@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { Provider } from 'react-redux';
 import { Toaster } from 'react-hot-toast';
 import store from './redux/store';
+import 'sweetalert2/dist/sweetalert2.min.css';
 import './index.css';
 import './theme.css';
 import App from './App.jsx';

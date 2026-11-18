@@ -3,6 +3,7 @@ import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { logoutUser } from '../redux/authSlice';
 import authService from '../services/authService';
+import { resolveProfileImageUrl } from '../utils/imageUrl';
 import toast from 'react-hot-toast';
 
 const Header = ({ onToggleSidebar }) => {
@@ -17,6 +18,13 @@ const Header = ({ onToggleSidebar }) => {
   });
 
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [user?.profile_image, user?.image]);
+
+  const avatarUrl = !imgError ? resolveProfileImageUrl(user?.profile_image || user?.image) : null;
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -115,15 +123,23 @@ const Header = ({ onToggleSidebar }) => {
             aria-expanded={showUserMenu}
           >
             <div className="av">
-              {user?.profile_image ? (
-                <img src={user.profile_image} alt={user.name || 'User'} />
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={user?.name || 'User'}
+                  onError={() => setImgError(true)}
+                />
               ) : (
                 getInitials(user?.name)
               )}
             </div>
-            <div className="hidden md:block text-left">
-              <span className="font-semibold block text-[13px]">{user?.name || 'Admin'}</span>
-              <small>{user?.business_name || 'Business'}</small>
+            <div className="hidden md:block text-left min-w-0 max-w-[150px]">
+              <span className="font-semibold block text-[13px] truncate" title={user?.name || 'Admin'}>
+                {user?.name || 'Admin'}
+              </span>
+              <small className="text-[var(--mut)] text-[11px] block truncate" title={user?.business_name || 'Business'}>
+                {user?.business_name || 'Business'}
+              </small>
             </div>
             <i className="bi bi-chevron-down text-[10px] ml-1 opacity-60"></i>
           </button>
@@ -135,9 +151,9 @@ const Header = ({ onToggleSidebar }) => {
               onClick={() => setShowUserMenu(false)}
             >
               <div className="p-3 border-b border-[var(--line)] mb-1">
-                <p className="font-semibold text-sm text-[var(--ink)] leading-tight">{user?.name}</p>
-                <p className="text-xs text-[var(--mut)] truncate mt-0.5">{user?.email}</p>
-                <span className="inline-block mt-1.5 text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-[var(--blue)] font-medium">
+                <p className="font-semibold text-sm text-[var(--ink)] leading-tight truncate" title={user?.name}>{user?.name}</p>
+                <p className="text-xs text-[var(--mut)] truncate mt-0.5" title={user?.email}>{user?.email}</p>
+                <span className="inline-block mt-1.5 text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-[var(--blue)] font-medium max-w-[190px] truncate" title={user?.business_name}>
                   {user?.business_name || 'Admin'}
                 </span>
               </div>

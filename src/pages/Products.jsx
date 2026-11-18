@@ -681,14 +681,14 @@ const Products = () => {
                         <span className="inline-flex items-center gap-1 font-medium text-[var(--blue)]">
                           <i className="bi bi-tag text-[10px]"></i> {prod.category_name || 'Unassigned'}
                         </span>
-                        <span>•</span>
-                        <span>#{prod.id}</span>
                         {prod.barcode && (
                           <>
                             <span>•</span>
-                            <span className="font-mono text-[10px] text-[var(--mut)] bg-[var(--soft)] px-1.5 py-0.5 rounded border border-[var(--line)]">
-                              <i className="bi bi-upc mr-1 text-[var(--blue)]"></i>
-                              {prod.barcode}
+                            <span
+                              className="w-5 h-5 rounded-md bg-[var(--soft)] border border-[var(--line)] inline-flex items-center justify-center text-[var(--blue)] text-[11px]"
+                              title={`Barcode: ${prod.barcode}`}
+                            >
+                              <i className="bi bi-upc-scan"></i>
                             </span>
                           </>
                         )}
@@ -803,16 +803,16 @@ const Products = () => {
                                 {prod.name}
                               </b>
                               <div className="flex items-center gap-1.5 text-[11px] text-[var(--mut)] truncate">
-                                {prod.barcode ? (
-                                  <span className="font-mono text-[10px] bg-[var(--soft)] px-1.5 py-0.5 rounded border border-[var(--line)] inline-flex items-center gap-1 text-[var(--ink)]">
-                                    <i className="bi bi-upc text-[var(--blue)]"></i>
-                                    <span>{prod.barcode}</span>
+                                {prod.barcode && (
+                                  <span
+                                    className="w-5 h-5 rounded-md bg-[var(--soft)] border border-[var(--line)] inline-flex items-center justify-center text-[var(--blue)] text-[12px] shrink-0"
+                                    title={`Barcode: ${prod.barcode}`}
+                                  >
+                                    <i className="bi bi-upc-scan"></i>
                                   </span>
-                                ) : (
-                                  <span>#{prod.id}</span>
                                 )}
                                 {prod.description && (
-                                  <span className="truncate opacity-75">• {prod.description}</span>
+                                  <span className="truncate opacity-75">{prod.description}</span>
                                 )}
                               </div>
                             </div>
@@ -1340,9 +1340,8 @@ const Products = () => {
                           alt={item.barcode}
                           className="max-h-12 w-auto object-contain my-auto"
                         />
-                        <div className="w-full mt-1 flex items-center justify-between text-[10px] font-mono text-gray-600 px-1 border-t border-gray-200 pt-0.5">
-                          <span className="tracking-widest font-bold">{item.barcode}</span>
-                          <span className="font-bold text-gray-900">
+                        <div className="w-full mt-1 flex items-center justify-center text-[10px] font-mono text-gray-900 px-1 border-t border-gray-200 pt-0.5">
+                          <span className="font-bold">
                             Rs. {Math.round(item.sale_price).toLocaleString('en-IN')}
                           </span>
                         </div>

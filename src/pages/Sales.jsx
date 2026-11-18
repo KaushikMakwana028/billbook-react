@@ -15,6 +15,13 @@ const fmtCurrency = (val) => {
   });
 };
 
+const fmtKpiCurrency = (val) => {
+  const num = parseFloat(val) || 0;
+  return 'Rs. ' + (num % 1 === 0
+    ? num.toLocaleString('en-IN')
+    : num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+};
+
 const DEFAULT_IMG = 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=100&auto=format&fit=crop&q=60';
 const DRAFT_BILLS_KEY = 'billbook_draft_bills_v2';
 
@@ -105,13 +112,21 @@ const createEmptyItem = () => ({
   line_total: 0,
 });
 
+const getTodayLocalDate = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const createEmptyBill = (id, title) => ({
   id,
   title,
   customer_phone: '',
   customer_name: '',
   customer_address: '',
-  sale_date: new Date().toISOString().split('T')[0],
+  sale_date: getTodayLocalDate(),
   notes: '',
   items: [createEmptyItem()],
 });
@@ -281,6 +296,7 @@ const Sales = () => {
   // ── Sales Records State ──
   const [sales, setSales] = useState([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
+  const [totalProfit, setTotalProfit] = useState(0);
   const [totalRows, setTotalRows] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -291,18 +307,49 @@ const Sales = () => {
   const [selectedSaleDetail, setSelectedSaleDetail] = useState(null);
   const [deleteSaleId, setDeleteSaleId] = useState(null);
   const [deletingSale, setDeletingSale] = useState(false);
+  const [sendingWaId, setSendingWaId] = useState(null);
+
+  const handleSendServerWhatsApp = async (saleId, phone) => {
+    setSendingWaId(saleId);
+    try {
+      const res = await whatsappService.sendInvoice(saleId, phone);
+      if (res?.status) {
+        const route = res.data?.route || 'official';
+        const routeMsg = route === 'official'
+          ? 'dispatched via WhatsApp Official Account (Meta Cloud API)'
+          : (route === 'connected' ? 'dispatched via Connected WhatsApp' : 'processed');
+        toast.success(`🎉 WhatsApp invoice ${routeMsg}!`);
+      } else {
+        toast.error(res?.message || 'Failed to dispatch WhatsApp message.');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Error triggering WhatsApp send.');
+    } finally {
+      setSendingWaId(null);
+    }
+  };
 
   // ── All Products for POS Picker ──
   const [allProducts, setAllProducts] = useState([]);
 
   // ── Open Bills (Multi-Tab / Multi-Sale System) ──
   const [bills, setBills] = useState(() => {
+    const today = getTodayLocalDate();
     try {
       const saved = localStorage.getItem(DRAFT_BILLS_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.bills && Object.keys(parsed.bills).length > 0) {
-          return parsed.bills;
+          const sanitized = {};
+          Object.keys(parsed.bills).forEach((key) => {
+            const b = parsed.bills[key];
+            const isUntouched = !b.items || b.items.length === 0 || (b.items.length === 1 && !b.items[0].product_id);
+            sanitized[key] = {
+              ...b,
+              sale_date: isUntouched || b.sale_date < today ? today : (b.sale_date || today),
+            };
+          });
+          return sanitized;
         }
       }
     } catch {
@@ -437,6 +484,36 @@ const Sales = () => {
     }
   };
 
+  const applyDatePreset = (preset) => {
+    const today = getTodayLocalDate();
+    const d = new Date();
+    if (preset === 'today') {
+      setFilterDateFrom(today);
+      setFilterDateTo(today);
+    } else if (preset === 'yesterday') {
+      const y = new Date(d);
+      y.setDate(y.getDate() - 1);
+      const yStr = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
+      setFilterDateFrom(yStr);
+      setFilterDateTo(yStr);
+    } else if (preset === 'this_week') {
+      const startOfWeek = new Date(d);
+      const day = d.getDay() || 7;
+      startOfWeek.setDate(d.getDate() - day + 1);
+      const startStr = `${startOfWeek.getFullYear()}-${String(startOfWeek.getMonth() + 1).padStart(2, '0')}-${String(startOfWeek.getDate()).padStart(2, '0')}`;
+      setFilterDateFrom(startStr);
+      setFilterDateTo(today);
+    } else if (preset === 'this_month') {
+      const startMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+      setFilterDateFrom(startMonth);
+      setFilterDateTo(today);
+    } else if (preset === 'all') {
+      setFilterDateFrom('');
+      setFilterDateTo('');
+      setSearchQuery('');
+    }
+  };
+
   const fetchSales = async (page = 1) => {
     setLoadingSales(true);
     try {
@@ -447,9 +524,20 @@ const Sales = () => {
         page,
       });
       if (res.status && res.data) {
-        setSales(res.data.sales || []);
-        setTotalRevenue(res.data.total_revenue || 0);
-        setTotalRows(res.data.total_rows || 0);
+        const salesList = res.data.sales || [];
+        setSales(salesList);
+        const rev = parseFloat(res.data.total_sales ?? res.data.total_revenue ?? 0);
+        setTotalRevenue(rev);
+
+        let prof = 0;
+        if (res.data.total_profit !== undefined && res.data.total_profit !== null) {
+          prof = parseFloat(res.data.total_profit || 0);
+        } else {
+          prof = salesList.reduce((acc, s) => acc + (parseFloat(s.profit || s.sale_profit || 0)), 0);
+        }
+        setTotalProfit(prof);
+
+        setTotalRows(res.data.total_rows || salesList.length || 0);
         setTotalPages(res.data.total_pages || 1);
         setCurrentPage(res.data.current_page || 1);
       }
@@ -1024,16 +1112,36 @@ const Sales = () => {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-[var(--mut)] uppercase tracking-wider mb-1">
-                  Sale Date
-                </label>
-                <input
-                  type="date"
-                  className="auth-input text-xs cursor-pointer"
-                  value={currentBill.sale_date}
-                  onChange={(e) => updateCurrentBill({ sale_date: e.target.value })}
-                  required
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] font-semibold text-[var(--mut)] uppercase tracking-wider">
+                    Sale Date
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentBill({ sale_date: getTodayLocalDate() })}
+                    className="text-[10px] font-bold text-[var(--blue)] hover:underline cursor-pointer"
+                    title="Reset to today's date"
+                  >
+                    Set Today
+                  </button>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="date"
+                    className="auth-input text-xs cursor-pointer flex-1"
+                    value={currentBill.sale_date || getTodayLocalDate()}
+                    onChange={(e) => updateCurrentBill({ sale_date: e.target.value })}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentBill({ sale_date: getTodayLocalDate() })}
+                    className="chip !h-9 text-[11px] px-2.5 font-bold text-[var(--blue)] hover:bg-blue-50 dark:hover:bg-blue-900/30 shrink-0 cursor-pointer"
+                    title="Set to Today"
+                  >
+                    Today
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1345,106 +1453,175 @@ const Sales = () => {
       {activeTab === 'list' && (
         <div className="space-y-3.5">
           {/* ── Summary & Filter Bar ── */}
-          <div className="card2 !p-3.5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-            {/* Search */}
-            <div className="search-input-wrap flex-1 md:max-w-sm">
-              <i className="bi bi-search"></i>
-              <input
-                type="text"
-                className="search-input text-xs"
-                placeholder="Search invoice number, customer, phone..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && fetchSales(1)}
-              />
-              {searchQuery && (
+          <div className="card2 !p-3.5 space-y-3">
+            {/* Quick Filter Presets */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 mobile-scroll">
+              <span className="text-[11px] font-semibold text-[var(--mut)] shrink-0 mr-1 flex items-center gap-1">
+                <i className="bi bi-clock-history text-[var(--blue)]"></i>
+                <span>Quick Filter:</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => applyDatePreset('all')}
+                className={`chip !h-7 text-[11px] px-2.5 font-semibold cursor-pointer transition-colors ${!filterDateFrom && !filterDateTo ? '!bg-[var(--blue)] !text-white !border-[var(--blue)]' : ''}`}
+              >
+                All Time
+              </button>
+              <button
+                type="button"
+                onClick={() => applyDatePreset('today')}
+                className={`chip !h-7 text-[11px] px-2.5 font-semibold cursor-pointer transition-colors ${filterDateFrom === getTodayLocalDate() && filterDateTo === getTodayLocalDate() ? '!bg-[var(--blue)] !text-white !border-[var(--blue)]' : ''}`}
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => applyDatePreset('yesterday')}
+                className="chip !h-7 text-[11px] px-2.5 font-semibold cursor-pointer hover:border-[var(--blue)]"
+              >
+                Yesterday
+              </button>
+              <button
+                type="button"
+                onClick={() => applyDatePreset('this_week')}
+                className="chip !h-7 text-[11px] px-2.5 font-semibold cursor-pointer hover:border-[var(--blue)]"
+              >
+                This Week
+              </button>
+              <button
+                type="button"
+                onClick={() => applyDatePreset('this_month')}
+                className="chip !h-7 text-[11px] px-2.5 font-semibold cursor-pointer hover:border-[var(--blue)]"
+              >
+                This Month
+              </button>
+            </div>
+
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2 border-t border-[var(--line)]">
+              {/* Search */}
+              <div className="search-input-wrap flex-1 md:max-w-sm">
+                <i className="bi bi-search"></i>
+                <input
+                  type="text"
+                  className="search-input text-xs"
+                  placeholder="Search invoice number, customer, phone..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && fetchSales(1)}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery('');
+                      fetchSales(1);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--mut)] hover:text-[var(--ink)] z-10 cursor-pointer"
+                  >
+                    <i className="bi bi-x-circle"></i>
+                  </button>
+                )}
+              </div>
+
+              {/* Date Filters + Refresh */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="text-[11px] text-[var(--mut)]">From:</span>
+                  <input
+                    type="date"
+                    className="auth-input !h-9 text-xs py-1 px-2 cursor-pointer"
+                    value={filterDateFrom}
+                    onChange={(e) => setFilterDateFrom(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="text-[11px] text-[var(--mut)]">To:</span>
+                  <input
+                    type="date"
+                    className="auth-input !h-9 text-xs py-1 px-2 cursor-pointer"
+                    value={filterDateTo}
+                    onChange={(e) => setFilterDateTo(e.target.value)}
+                  />
+                </div>
+
+                <button
+                  onClick={() => fetchSales(1)}
+                  className="btn-b text-xs font-semibold !h-9 px-3 cursor-pointer"
+                >
+                  <i className="bi bi-funnel"></i>
+                  <span>Filter</span>
+                </button>
+
                 <button
                   onClick={() => {
                     setSearchQuery('');
+                    setFilterDateFrom('');
+                    setFilterDateTo('');
                     fetchSales(1);
                   }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--mut)] hover:text-[var(--ink)] z-10"
+                  className="chip !h-9 !px-2.5 text-xs shrink-0 cursor-pointer"
+                  title="Reset all filters"
                 >
-                  <i className="bi bi-x-circle"></i>
+                  <i className="bi bi-arrow-counterclockwise"></i>
                 </button>
-              )}
-            </div>
-
-            {/* Date Filters + Refresh */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center gap-1.5 text-xs">
-                <span className="text-[11px] text-[var(--mut)]">From:</span>
-                <input
-                  type="date"
-                  className="auth-input !h-9 text-xs py-1 px-2 cursor-pointer"
-                  value={filterDateFrom}
-                  onChange={(e) => setFilterDateFrom(e.target.value)}
-                />
               </div>
-
-              <div className="flex items-center gap-1.5 text-xs">
-                <span className="text-[11px] text-[var(--mut)]">To:</span>
-                <input
-                  type="date"
-                  className="auth-input !h-9 text-xs py-1 px-2 cursor-pointer"
-                  value={filterDateTo}
-                  onChange={(e) => setFilterDateTo(e.target.value)}
-                />
-              </div>
-
-              <button
-                onClick={() => fetchSales(1)}
-                className="btn-b text-xs font-semibold !h-9 px-3"
-              >
-                <i className="bi bi-funnel"></i>
-                <span>Filter</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setFilterDateFrom('');
-                  setFilterDateTo('');
-                  fetchSales(1);
-                }}
-                className="chip !h-9 !px-2.5 text-xs shrink-0"
-                title="Reset filters"
-              >
-                <i className="bi bi-arrow-counterclockwise"></i>
-              </button>
             </div>
           </div>
 
-          {/* ── KPI Row ── */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-            <div className="card2 !p-3">
-              <span className="text-[11px] text-[var(--mut)] block">Total Invoices</span>
-              <b className="text-base sm:text-lg font-bold text-[var(--ink)] block mt-0.5">
-                {totalRows} Invoices
-              </b>
-            </div>
-
-            <div className="card2 !p-3">
-              <span className="text-[11px] text-[var(--mut)] block">Total Sales Revenue</span>
-              <b className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 block mt-0.5">
-                {fmtCurrency(totalRevenue)}
-              </b>
-            </div>
-
-            <div className="card2 !p-3 col-span-2 sm:col-span-1 flex items-center justify-between">
-              <div>
-                <span className="text-[11px] text-[var(--mut)] block">Fast POS Billing</span>
-                <b className="text-xs font-semibold text-[var(--blue)] block mt-0.5">
-                  Multi-item sales
+          {/* ── KPI Row: Total Invoices, Total Sales, Total Profit & Margin ── */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-2.5">
+            <div className="card2 !p-2.5 sm:!p-3.5 flex items-center gap-2.5 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-blue-500/10 text-[var(--blue)] flex items-center justify-center text-base sm:text-lg shrink-0">
+                <i className="bi bi-receipt"></i>
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="text-[10.5px] sm:text-[11px] text-[var(--mut)] block truncate">Total Invoices</span>
+                <b className="text-xs sm:text-base font-bold text-[var(--ink)] block truncate mt-0.5 tracking-tight">
+                  {totalRows} Invoices
                 </b>
               </div>
-              <button
-                onClick={() => setActiveTab('create')}
-                className="btn-b text-xs font-semibold !h-8 px-3"
-              >
-                <i className="bi bi-plus-lg"></i>
-                <span>New Sale</span>
-              </button>
+            </div>
+
+            <div className="card2 !p-2.5 sm:!p-3.5 flex items-center gap-2.5 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-base sm:text-lg shrink-0">
+                <i className="bi bi-cash-stack"></i>
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="text-[10.5px] sm:text-[11px] text-[var(--mut)] block truncate">Total Sales</span>
+                <b
+                  className="text-xs sm:text-base font-bold text-emerald-600 dark:text-emerald-400 block truncate mt-0.5 tracking-tight"
+                  title={fmtCurrency(totalRevenue)}
+                >
+                  {fmtKpiCurrency(totalRevenue)}
+                </b>
+              </div>
+            </div>
+
+            <div className="card2 !p-2.5 sm:!p-3.5 flex items-center gap-2.5 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-base sm:text-lg shrink-0">
+                <i className="bi bi-graph-up-arrow"></i>
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="text-[10.5px] sm:text-[11px] text-[var(--mut)] block truncate">Total Profit</span>
+                <b
+                  className="text-xs sm:text-base font-bold text-indigo-600 dark:text-indigo-400 block truncate mt-0.5 tracking-tight"
+                  title={fmtCurrency(totalProfit)}
+                >
+                  {fmtKpiCurrency(totalProfit)}
+                </b>
+              </div>
+            </div>
+
+            <div className="card2 !p-2.5 sm:!p-3.5 flex items-center gap-2.5 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center text-base sm:text-lg shrink-0">
+                <i className="bi bi-pie-chart"></i>
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="text-[10.5px] sm:text-[11px] text-[var(--mut)] block truncate">Profit Margin</span>
+                <b className="text-xs sm:text-base font-bold text-amber-600 dark:text-amber-400 block truncate mt-0.5 tracking-tight">
+                  {totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) + '%' : '0.0%'}
+                </b>
+              </div>
             </div>
           </div>
 
@@ -1488,81 +1665,106 @@ const Sales = () => {
                         </span>
                       </div>
                       <div className="text-right shrink-0">
-                        <span className="text-[10px] text-[var(--mut)] block">Grand Total</span>
-                        <b className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                        <span className="text-[10px] text-[var(--mut)] block">Grand Total / Profit</span>
+                        <b className="text-sm font-bold text-emerald-600 dark:text-emerald-400 block">
                           {fmtCurrency(s.grand_total)}
                         </b>
+                        <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 block">
+                          +{fmtCurrency(s.profit || 0)} profit
+                        </span>
                         <span className="text-[10px] text-[var(--mut)] block">
                           {s.items_count || 1} items
                         </span>
                       </div>
                     </div>
 
-                    {/* Actions */}
-                    <div className="pt-2 border-t border-[var(--line)] flex items-center justify-between gap-2">
+                    {/* ── Modern Structured Invoice Actions ── */}
+                    <div className="pt-2.5 border-t border-[var(--line)] space-y-2">
+                      {/* Top Action Row: Primary View Details & WhatsApp Instant Share */}
                       <div className="flex items-center gap-2">
                         <button
+                          type="button"
                           onClick={() => handleOpenSaleDetail(s)}
-                          className="text-xs text-[var(--blue)] font-semibold hover:underline flex items-center gap-1"
+                          className="flex-1 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/40 text-[var(--blue)] hover:bg-blue-100 dark:hover:bg-blue-900/40 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                         >
                           <i className="bi bi-eye"></i>
                           <span>View Details</span>
                         </button>
-                        <a
-                          href={s.print_invoice_url || `https://billbook.visiontechnolabs.com/sales/print_invoice/${s.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-slate-700 dark:text-slate-200 font-semibold hover:underline flex items-center gap-1"
-                          title="Print Official Invoice"
-                        >
-                          <i className="bi bi-printer text-[var(--blue)]"></i>
-                          <span>Print</span>
-                        </a>
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        <a
-                          href={s.print_invoice_url || `https://billbook.visiontechnolabs.com/sales/print_invoice/${s.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-2.5 py-1 rounded-lg border border-[var(--line)] bg-[var(--soft)] text-xs font-semibold text-[var(--ink)] flex items-center gap-1 hover:border-rose-400 hover:text-rose-600 transition-colors"
-                          title="Open Invoice (Official HTML)"
-                        >
-                          <i className="bi bi-file-earmark-pdf text-rose-500"></i>
-                          <span>PDF</span>
-                        </a>
-
-                        <a
-                          href={s.invoice_image_url || `https://billbook.visiontechnolabs.com/uploads/invoices/invoice-${s.id}.jpg`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          download={`invoice-${s.invoice_number || s.id}.jpg`}
-                          className="px-2.5 py-1 rounded-lg border border-[var(--line)] bg-[var(--soft)] text-xs font-semibold text-[var(--ink)] flex items-center gap-1 hover:border-emerald-400 hover:text-emerald-600 transition-colors"
-                          title="Download / View Invoice JPG Image"
-                        >
-                          <i className="bi bi-file-earmark-image text-emerald-500"></i>
-                          <span>JPG</span>
-                        </a>
 
                         {s.customer_phone && s.customer_phone.length >= 10 && (
+                          <button
+                            type="button"
+                            disabled={sendingWaId === s.id}
+                            onClick={() => handleSendServerWhatsApp(s.id, s.customer_phone)}
+                            className="flex-1 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                            title="Send WhatsApp Invoice to Customer"
+                          >
+                            <i className={`bi ${sendingWaId === s.id ? 'bi-hourglass-split animate-spin text-emerald-600' : 'bi-whatsapp text-[#25D366]'}`}></i>
+                            <span>{sendingWaId === s.id ? 'Sending...' : 'WhatsApp'}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Bottom Action Row: Print, PDF, JPG, Direct Chat, Delete */}
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
                           <a
-                            href={s.whatsapp_url || `https://wa.me/91${s.customer_phone.replace(/\D/g, '')}?text=Dear%20${encodeURIComponent(s.customer_name || 'Customer')},%20Invoice%20%23${s.invoice_number}%20Amount:%20${s.grand_total}`}
+                            href={s.print_invoice_url || `https://billbook.visiontechnolabs.com/sales/print_invoice/${s.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="w-7 h-7 rounded-lg border border-[var(--line)] bg-emerald-50 text-[#25D366] hover:bg-emerald-100 flex items-center justify-center text-xs transition-colors"
-                            title="Share Invoice on WhatsApp"
+                            className="flex-1 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-[var(--card)] hover:border-[var(--blue)] text-[11px] font-semibold text-[var(--ink)] flex items-center justify-center gap-1 transition-colors"
+                            title="Print Invoice"
                           >
-                            <i className="bi bi-whatsapp"></i>
+                            <i className="bi bi-printer text-xs text-[var(--blue)]"></i>
+                            <span>Print</span>
                           </a>
-                        )}
 
-                        <button
-                          onClick={() => setDeleteSaleId(s.id)}
-                          className="w-7 h-7 rounded-lg border border-[var(--line)] text-rose-500 hover:bg-rose-50 flex items-center justify-center text-xs"
-                          title="Delete Record"
-                        >
-                          <i className="bi bi-trash"></i>
-                        </button>
+                          <a
+                            href={s.print_invoice_url || `https://billbook.visiontechnolabs.com/sales/print_invoice/${s.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-300 text-[11px] font-semibold text-rose-600 dark:text-rose-400 flex items-center justify-center gap-1 transition-colors"
+                            title="Open Invoice PDF"
+                          >
+                            <i className="bi bi-file-earmark-pdf text-xs"></i>
+                            <span>PDF</span>
+                          </a>
+
+                          <a
+                            href={s.invoice_image_url || `https://billbook.visiontechnolabs.com/uploads/invoices/invoice-${s.id}.jpg`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download={`invoice-${s.invoice_number || s.id}.jpg`}
+                            className="flex-1 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1 transition-colors"
+                            title="Download Invoice Image (JPG)"
+                          >
+                            <i className="bi bi-file-earmark-image text-xs"></i>
+                            <span>JPG</span>
+                          </a>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          {s.customer_phone && s.customer_phone.length >= 10 && (
+                            <a
+                              href={s.whatsapp_url || `https://wa.me/91${s.customer_phone.replace(/\D/g, '')}?text=Dear%20${encodeURIComponent(s.customer_name || 'Customer')},%20Invoice%20%23${s.invoice_number}%20Amount:%20${s.grand_total}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-7 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] text-[#25D366] hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 flex items-center justify-center text-xs transition-colors"
+                              title="Direct WhatsApp Chat"
+                            >
+                              <i className="bi bi-chat-dots"></i>
+                            </a>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => setDeleteSaleId(s.id)}
+                            className="w-7 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-300 flex items-center justify-center text-xs transition-colors cursor-pointer"
+                            title="Delete Record"
+                          >
+                            <i className="bi bi-trash"></i>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1579,6 +1781,7 @@ const Sales = () => {
                       <th className="py-3 px-3">Customer</th>
                       <th className="py-3 px-3">Items Sold</th>
                       <th className="py-3 px-3 text-right">Grand Total</th>
+                      <th className="py-3 px-3 text-right">Profit</th>
                       <th className="py-3 px-3 text-center">Status</th>
                       <th className="py-3 px-4 text-right">Actions</th>
                     </tr>
@@ -1606,6 +1809,9 @@ const Sales = () => {
                         </td>
                         <td className="py-3 px-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
                           {fmtCurrency(s.grand_total)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-bold text-indigo-600 dark:text-indigo-400">
+                          +{fmtCurrency(s.profit || 0)}
                         </td>
                         <td className="py-3 px-3 text-center">
                           <span className="pill !text-[10px] !py-0.5 !px-2 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
@@ -1644,15 +1850,26 @@ const Sales = () => {
                             </a>
 
                             {s.customer_phone && s.customer_phone.length >= 10 && (
-                              <a
-                                href={s.whatsapp_url || `https://wa.me/91${s.customer_phone.replace(/\D/g, '')}?text=Dear%20${encodeURIComponent(s.customer_name || 'Customer')},%20Invoice%20%23${s.invoice_number}%20Amount:%20${s.grand_total}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="w-7 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-emerald-50 text-[#25D366] hover:border-emerald-300 flex items-center justify-center text-xs transition-colors"
-                                title="Share Invoice on WhatsApp"
-                              >
-                                <i className="bi bi-whatsapp"></i>
-                              </a>
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={sendingWaId === s.id}
+                                  onClick={() => handleSendServerWhatsApp(s.id, s.customer_phone)}
+                                  className="w-7 h-7 rounded-lg border border-emerald-300 bg-emerald-50 text-[#25D366] hover:bg-emerald-100 flex items-center justify-center text-xs transition-colors disabled:opacity-50 cursor-pointer"
+                                  title="Send Official WhatsApp Message (Meta Cloud API)"
+                                >
+                                  <i className={`bi ${sendingWaId === s.id ? 'bi-hourglass-split animate-spin' : 'bi-send-check'}`}></i>
+                                </button>
+                                <a
+                                  href={s.whatsapp_url || `https://wa.me/91${s.customer_phone.replace(/\D/g, '')}?text=Dear%20${encodeURIComponent(s.customer_name || 'Customer')},%20Invoice%20%23${s.invoice_number}%20Amount:%20${s.grand_total}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="w-7 h-7 rounded-lg border border-[var(--line)] bg-[var(--soft)] hover:bg-emerald-50 text-[#25D366] hover:border-emerald-300 flex items-center justify-center text-xs transition-colors"
+                                  title="Share Invoice on WhatsApp"
+                                >
+                                  <i className="bi bi-whatsapp"></i>
+                                </a>
+                              </>
                             )}
 
                             <button
@@ -1773,22 +1990,41 @@ const Sales = () => {
 
               {createdInvoice.customer_phone ? (
                 <>
-                  {createdInvoice.whatsappRoute && createdInvoice.whatsappRoute !== 'skipped' && (
-                    <div className="col-span-3 py-1.5 px-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-semibold flex items-center justify-center gap-1.5">
-                      <i className="bi bi-check-all text-base text-emerald-600"></i>
-                      <span>WhatsApp auto-dispatched ({createdInvoice.whatsappRoute})</span>
-                    </div>
-                  )}
+                  <div className="col-span-3 py-1.5 px-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-semibold flex items-center justify-center gap-1.5">
+                    <i className="bi bi-check-all text-base text-emerald-600"></i>
+                    <span>
+                      {createdInvoice.whatsappRoute === 'official'
+                        ? 'Dispatched via WhatsApp Official Account'
+                        : createdInvoice.whatsappRoute === 'connected'
+                        ? 'Dispatched via Connected WhatsApp'
+                        : `WhatsApp status: ${createdInvoice.whatsappRoute || 'Sent'}`}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={sendingWaId === createdInvoice.id}
+                    onClick={() => handleSendServerWhatsApp(createdInvoice.id, createdInvoice.customer_phone)}
+                    className="col-span-3 px-3 py-2.5 rounded-xl bg-[#25D366] text-white font-bold text-xs flex items-center justify-center gap-2 hover:bg-[#20bd5a] transition-all shadow-md cursor-pointer disabled:opacity-60"
+                    title="Send via WhatsApp Official Account"
+                  >
+                    <i className="bi bi-whatsapp text-sm"></i>
+                    <span>
+                      {sendingWaId === createdInvoice.id
+                        ? 'Sending via Official WA...'
+                        : 'Re-send via Official WhatsApp'}
+                    </span>
+                  </button>
 
                   <a
                     href={createdInvoice.whatsappUrl || `https://wa.me/91${createdInvoice.customer_phone.replace(/\D/g, '')}?text=Dear%20${encodeURIComponent(createdInvoice.customer_name || 'Customer')},%20thank%20you%20for%20your%20purchase!%20Invoice%20%23${createdInvoice.invoice_number}%20Amount:%20Rs.%20${createdInvoice.grand_total}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="col-span-3 px-3 py-2.5 rounded-xl bg-[#25D366] text-white font-bold text-xs flex items-center justify-center gap-2 hover:bg-[#20bd5a] transition-all shadow-md cursor-pointer"
-                    title="Open WhatsApp chat and send invoice"
+                    className="col-span-3 px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--soft)] text-[var(--ink)] hover:text-[#25D366] font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    title="Open WhatsApp chat in web/app directly"
                   >
-                    <i className="bi bi-whatsapp text-sm"></i>
-                    <span>Share on WhatsApp</span>
+                    <i className="bi bi-box-arrow-up-right text-xs"></i>
+                    <span>Open Direct WhatsApp Chat</span>
                   </a>
                 </>
               ) : null}
@@ -1838,6 +2074,19 @@ const Sales = () => {
                   <i className="bi bi-file-earmark-pdf"></i>
                   <span>PDF View</span>
                 </a>
+
+                {selectedSaleDetail.customer_phone && (
+                  <button
+                    type="button"
+                    disabled={sendingWaId === selectedSaleDetail.id}
+                    onClick={() => handleSendServerWhatsApp(selectedSaleDetail.id, selectedSaleDetail.customer_phone)}
+                    className="chip text-xs !h-8 px-2.5 flex items-center gap-1 hover:border-emerald-300 text-emerald-600 disabled:opacity-50 cursor-pointer"
+                    title="Send Invoice via WhatsApp Official Account"
+                  >
+                    <i className={`bi ${sendingWaId === selectedSaleDetail.id ? 'bi-hourglass-split animate-spin' : 'bi-whatsapp'}`}></i>
+                    <span>{sendingWaId === selectedSaleDetail.id ? 'Sending...' : 'Send WhatsApp'}</span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => setSelectedSaleDetail(null)}

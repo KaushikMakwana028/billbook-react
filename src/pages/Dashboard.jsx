@@ -84,6 +84,19 @@ const Dashboard = () => {
     );
   };
 
+  const fmtKpiCurrency = (val) => {
+    const num = parseFloat(val) || 0;
+    return (
+      'Rs. ' +
+      (num % 1 === 0
+        ? num.toLocaleString('en-IN')
+        : num.toLocaleString('en-IN', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }))
+    );
+  };
+
   // Sparkline path generator
   const renderSparkline = (dataPoints, color = 'var(--blue)') => {
     const points = dataPoints && dataPoints.length > 1 ? dataPoints : [12, 18, 14, 24, 20, 28, 32, 26];
@@ -322,8 +335,11 @@ const Dashboard = () => {
                   {filter === 'day' ? "Today's Sales" : `${dashboardData?.filter_label || 'Period'} Sales`}
                 </span>
               </div>
-              <div className="v">
-                {fmtCurrency(dashboardData?.filtered_total_sales ?? dashboardData?.today_total_sales)}
+              <div
+                className="v truncate tracking-tight text-xl sm:text-2xl"
+                title={fmtCurrency(dashboardData?.filtered_total_sales ?? dashboardData?.today_total_sales)}
+              >
+                {fmtKpiCurrency(dashboardData?.filtered_total_sales ?? dashboardData?.today_total_sales)}
               </div>
               <div className="xs">
                 <span className="up">
@@ -346,8 +362,12 @@ const Dashboard = () => {
                   {filter === 'day' ? "Today's Net Profit" : `${dashboardData?.filter_label || 'Period'} Net Profit`}
                 </span>
               </div>
-              <div className="v" style={{ color: 'var(--green)' }}>
-                {fmtCurrency(dashboardData?.filtered_total_profit ?? dashboardData?.today_total_profit)}
+              <div
+                className="v truncate tracking-tight text-xl sm:text-2xl"
+                style={{ color: 'var(--green)' }}
+                title={fmtCurrency(dashboardData?.filtered_total_profit ?? dashboardData?.today_total_profit)}
+              >
+                {fmtKpiCurrency(dashboardData?.filtered_total_profit ?? dashboardData?.today_total_profit)}
               </div>
               <div className="xs">
                 <span className="up">
@@ -393,8 +413,10 @@ const Dashboard = () => {
                 <span className="mut ms-1.5">Registered clients</span>
               </div>
               <div className="mt-2.5 pt-2 text-xs text-[var(--mut)] flex items-center justify-between border-t border-[var(--line)]">
-                <span>Purchases cost:</span>
-                <b className="text-[var(--ink)]">{fmtCurrency(dashboardData?.filtered_total_purchase)}</b>
+                <span className="truncate">Purchases:</span>
+                <b className="text-[var(--ink)] truncate ml-1" title={fmtCurrency(dashboardData?.filtered_total_purchase)}>
+                  {fmtKpiCurrency(dashboardData?.filtered_total_purchase)}
+                </b>
               </div>
             </div>
           </>
@@ -650,8 +672,8 @@ const Dashboard = () => {
                 </div>
               ))
             ) : (
-              <div className="py-5 text-center text-xs text-[var(--mut)]">
-                <i className="bi bi-check2-circle text-3xl text-emerald-500 block mb-1"></i>
+              <div className="py-3 text-center text-xs text-[var(--mut)]">
+                <i className="bi bi-check2-circle text-2xl text-emerald-500 block mb-1"></i>
                 All inventory levels are healthy!
               </div>
             )}
